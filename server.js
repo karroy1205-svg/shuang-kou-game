@@ -23,7 +23,6 @@ let wantStatus = [false, false, false, false];
 let turnTimer = null;
 let targetCard = null; 
 
-// 进贡管理系统
 let tributeConfig = { needsTribute: 0, payers: [], receivers: [], paidCards: [], returnedFrom: [] }; 
 let settlementAcks = [];
 
@@ -58,7 +57,15 @@ function broadcastRoomState() {
 
 function broadcastGameState() {
     let cardCounts = hands.map(h => h ? h.length : 0);
-    io.emit('gameStateSync', { match: matchConfig, onStage: teamOnStage, state: gameState, mainSuit: currentMainSuit, score: offStageScore, isFirstGame: matchConfig.currentGame === 1, cardCounts: cardCounts });
+    // 生成非常清晰的队伍名单：一三号位组队，二四号位组队
+    let t1Names = `[${seats[0]?seats[0].nickname:"空座"} & ${seats[2]?seats[2].nickname:"空座"}]`;
+    let t2Names = `[${seats[1]?seats[1].nickname:"空座"} & ${seats[3]?seats[3].nickname:"空座"}]`;
+    
+    io.emit('gameStateSync', { 
+        match: matchConfig, onStage: teamOnStage, state: gameState, 
+        mainSuit: currentMainSuit, score: offStageScore, isFirstGame: matchConfig.currentGame === 1, 
+        cardCounts: cardCounts, t1Names: t1Names, t2Names: t2Names 
+    });
 }
 
 function getEffectiveSuit(card) {
@@ -231,7 +238,6 @@ function startNegotiation() {
     });
 }
 
-// 扣底后的进贡流转枢纽
 function proceedAfterBury() {
     if (tributeConfig.needsTribute > 0) {
         gameState = 'TRIBUTE_PAY'; broadcastGameState();
@@ -240,11 +246,10 @@ function proceedAfterBury() {
         io.emit('startTributePhase', { phase: 'PAY', payers: tributeConfig.payers });
         
         startTimer(10, () => {
-            // 超时自动进贡最大主牌
             tributeConfig.payers.forEach((pIdx) => {
                 let alreadyPaid = tributeConfig.paidCards.some(pc => pc.from === pIdx);
                 if (!alreadyPaid && hands[pIdx].length > 0) {
-                    hands[pIdx].sort((a,b) => getAbsW(b) - getAbsW(a)); // 降序取最大
+                    hands[pIdx].sort((a,b) => getAbsW(b) - getAbsW(a)); 
                     let paidCard = hands[pIdx].splice(0, 1)[0];
                     processPaidTribute(pIdx, paidCard);
                 }
@@ -265,7 +270,6 @@ function processPaidTribute(pIdx, card) {
         io.to(seats[pIdx].id).emit('initHand', hands[pIdx]);
         
         if (tributeConfig.paidCards.length === 2) {
-            // 发放给收供者
             tributeConfig.paidCards.forEach(p => hands[p.to].push(p.card));
             tributeConfig.receivers.forEach(r => io.to(seats[r].id).emit('initHand', hands[r]));
             
@@ -277,7 +281,7 @@ function processPaidTribute(pIdx, card) {
             startTimer(20, () => {
                 tributeConfig.receivers.forEach((rIdx) => {
                     if (!tributeConfig.returnedFrom.includes(rIdx)) {
-                        hands[rIdx].sort((a,b) => getAbsW(a) - getAbsW(b)); // 升序取最小
+                        hands[rIdx].sort((a,b) => getAbsW(a) - getAbsW(b)); 
                         let retCard = hands[rIdx].splice(0, 1)[0];
                         processReturnedTribute(rIdx, retCard);
                     }
@@ -328,6 +332,7 @@ function handlePlayCards(pIndex, cards) {
             let w = -1;
             if (leadCards.length === 1 && p.cards.length === 1) w = getW(p.cards[0], leadSuit);
             else if (isLeadPair && isPair) w = getW(p.cards[0], leadSuit);
+            
             if (w > hiW) { hiW = w; winIdx = p.idx; }
         });
         
@@ -335,19 +340,20 @@ function handlePlayCards(pIndex, cards) {
         
         emitSys(`本轮结束，[${seats[winIdx].nickname}] 大。`);
 
-        // 【核心修复】不以轮数判断结束，以手牌是否出完为准！
         let isGameOver = hands.every(h => h.length === 0);
         
         if (isGameOver) {
-            // 延迟2秒结算，让玩家看清最后一轮出牌
             setTimeout(() => {
                 let offStageTeam = [0,1,2,3].filter(i => !teamOnStage.includes(i));
                 let offStageWonLast = !teamOnStage.includes(winIdx);
+                let isLastPair = currentTrick.find(t => t.idx === winIdx).cards.length === 2;
                 
-                // 抠底加分
-                if (offStageWonLast) offStageScore += bottomCards.reduce((sum, c) => sum + (c.value === '5' ? 5 : (['10','K'].includes(c.value) ? 10 : 0)), 0);
+                // 【修复：废除翻倍，回归纯正扣底加分】只加原始 5/10/K 的分数
+                if (offStageWonLast) {
+                    let bottomPts = bottomCards.reduce((sum, c) => sum + (c.value === '5' ? 5 : (['10','K'].includes(c.value) ? 10 : 0)), 0);
+                    offStageScore += bottomPts;
+                }
                 
-                // 默认按分数排布
                 let nextOnStage = teamOnStage;
                 let willTribute = 1; // 1: 台下进贡, 2: 台上进贡, 0: 免供
 
@@ -356,8 +362,6 @@ function handlePlayCards(pIndex, cards) {
                 else if (offStageScore >= 20) { nextOnStage = teamOnStage; willTribute = 0; }
                 else { nextOnStage = teamOnStage; willTribute = 1; }
 
-                // 抠底绝杀特判 (无视阶梯分数)
-                let isLastPair = currentTrick.find(t => t.idx === winIdx).cards.length === 2;
                 let kouDiMsg = "";
                 if (offStageWonLast) {
                     if (isLastPair) {
@@ -366,14 +370,12 @@ function handlePlayCards(pIndex, cards) {
                     } else {
                         kouDiMsg = "💥 最后一击【单张抠底】！台下组强制上台！";
                         nextOnStage = offStageTeam; 
-                        if(willTribute === 1) willTribute = 0; 
+                        if(willTribute === 1) willTribute = 0; // 成功上台，直接免去因为分数低要进贡的惩罚
                     }
                 }
 
-                // 更新大比分
                 if (nextOnStage.includes(0)) matchConfig.team1Wins++; else matchConfig.team2Wins++;
 
-                // 录入下局进贡字典
                 tributeConfig.needsTribute = willTribute;
                 if (willTribute === 1) { tributeConfig.payers = offStageTeam; tributeConfig.receivers = nextOnStage; }
                 else if (willTribute === 2) { tributeConfig.payers = teamOnStage; tributeConfig.receivers = nextOnStage; }
@@ -383,8 +385,8 @@ function handlePlayCards(pIndex, cards) {
 
                 let stageStr = teamOnStage.map(i=>seats[i]?seats[i].nickname:"").join(', ');
                 let settleHTML = `
-                    <div style="font-size:18px; margin-bottom:10px;">${kouDiMsg}</div>
-                    🔥 最终台下得分：<b style="color:#e74c3c; font-size:24px;">${offStageScore}</b> 分<br>
+                    <div style="font-size:20px; font-weight:bold; margin-bottom:10px; color:#e74c3c;">${kouDiMsg}</div>
+                    🔥 最终台下得分：<b style="color:#e74c3c; font-size:28px;">${offStageScore}</b> 分<br>
                     🛡️ 下局庄家阵营：<b style="color:#f1c40f;">${stageStr}</b><br>
                     🎁 下局是否进贡：<b style="color:#3498db;">${willTribute===0?'免供':(willTribute===1?'台下进贡':'台上进贡')}</b>
                 `;
@@ -397,12 +399,21 @@ function handlePlayCards(pIndex, cards) {
                         io.emit('showLobbyFallback'); broadcastRoomState();
                     }, 8000);
                 } else {
+                    // 【核心修复防卡死：自动帮托管掉线的人点确认！】
                     gameState = 'SETTLEMENT'; clearTimeout(turnTimer);
-                    io.emit('showSettlement', settleHTML);
+                    settlementAcks = [];
+                    seats.forEach((s, idx) => {
+                        if (!s || s.isOffline) settlementAcks.push(idx);
+                    });
+                    
+                    if (settlementAcks.length >= 4) {
+                        startNewGame(); // 万一全掉线了，直接开
+                    } else {
+                        io.emit('showSettlement', settleHTML);
+                    }
                 }
             }, 2000);
         } else {
-            // 常规进行中
             setTimeout(() => { 
                 currentTrick = [];  
                 io.emit('clearTable'); 
@@ -459,8 +470,8 @@ io.on('connection', (socket) => {
                 if(seat) seat.isOffline = true;
                 emitSys(`⚠️ [${socket.nickname}] 掉线，已交由系统托管。等待重连...`);
                 if (gameState === 'PLAYING' && currentTurnIndex === socket.seatIndex) promptPlay(socket.seatIndex);
+                
                 if (gameState === 'SETTLEMENT') {
-                    // 如果结算界面离线，自动帮他点确认防卡死
                     if (!settlementAcks.includes(socket.seatIndex)) {
                         settlementAcks.push(socket.seatIndex);
                         if (settlementAcks.length === 4) startNewGame();
@@ -510,7 +521,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 结算确认接口
     socket.on('ackSettlement', () => {
         if (!settlementAcks.includes(socket.seatIndex)) {
             settlementAcks.push(socket.seatIndex);
@@ -522,7 +532,6 @@ io.on('connection', (socket) => {
     socket.on('callTrump', (s) => { if(currentMainSuit==='?' && matchConfig.currentGame > 1){ currentMainSuit=s; broadcastGameState(); emitSys(`[${socket.nickname}]亮3定主[${s}]`); }});
     socket.on('overrideTrump', (s) => { if(!isTrumpOverridden && matchConfig.currentGame > 1){ currentMainSuit=s; isTrumpOverridden=true; broadcastGameState(); emitSys(`🔥 [${socket.nickname}]双3反主[${s}]！`); }});
     
-    // 改良的底牌要/取消 Toggle 逻辑
     socket.on('toggleWant', () => { 
         if(teamOnStage.includes(socket.seatIndex) && gameState === 'NEGOTIATING') {
             wantStatus[socket.seatIndex] = !wantStatus[socket.seatIndex];
@@ -561,7 +570,6 @@ io.on('connection', (socket) => {
         proceedAfterBury(); 
     });
 
-    // 进贡与还供安全接口
     socket.on('payTribute', c => {
         if(gameState === 'TRIBUTE_PAY' && tributeConfig.payers.includes(socket.seatIndex)) {
             let alreadyPaid = tributeConfig.paidCards.some(pc => pc.from === socket.seatIndex);
