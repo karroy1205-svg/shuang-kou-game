@@ -27,7 +27,7 @@ let tributeConfig = { needsTribute: 0, payers: [], receivers: [], paidCards: [],
 let settlementAcks = [];
 let lobbyDisconnectTimers = {}; // 存储大厅掉线踢人计时器
 
-const baseNicknames = ["海淀赌神", "朝阳群众", "双扣狂魔", "摸鱼达人", "绝命毒师", "天选之子", "键盘刺客", "西二旗卷王"];
+const baseNicknames = ["海淀赌神","张三","浦四","梅子酒","大铁锅", "林黛玉",  "鲁智深", "唐僧", "八戒", "悟空", "沙师弟", "伏地魔"];
 
 function emitSys(msg) { io.emit('systemMsg', msg); }
 
