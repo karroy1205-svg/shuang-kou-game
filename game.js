@@ -2,7 +2,7 @@ const socket = io();
 let myHand = [], myIdx = -1, mainS = '?', gState = 'LOBBY', isTrumpOn = false, isFirstG = false;
 let localTimer = null, trickClient = [];
 let amISpectator = false, amIOwner = false, myName = "";
-let roomInfo = []; 
+let roomInfo = [], onStagePlayers = []; 
 let currentTurnIdx = -1;
 
 const dom = {
@@ -49,6 +49,12 @@ function updateUI() {
             if(pair3) { dom.btns.over.style.display = 'inline-block'; dom.btns.over.dataset.suit = pair3; }
         }
     }
+    
+    // 【阶段权限收缩】"我要底牌" 仅供台上两名玩家操作
+    if (gState === 'NEGOTIATING' && !amISpectator && onStagePlayers.includes(myIdx)) {
+        dom.btns.want.style.display = 'inline-block';
+    }
+
     if (gState === 'BURYING_TAKE' && isMe) dom.btns.take.style.display = 'inline-block';
     if (gState === 'BURYING_ACTION' && isMe) dom.btns.bury.style.display = 'inline-block';
     if (gState === 'PLAYING' && isMe) dom.btns.play.style.display = 'inline-block';
@@ -164,15 +170,13 @@ function updateAvatarUI() {
         
         let sInfo = roomInfo[i];
         if(sInfo) {
-            // 【修复2】如果是自己（player-south），拼接“自己 (昵称)”
-            if (pId !== 'player-south') {
-                pUI.querySelector('.name').innerText = sInfo.name;
-            } else {
-                pUI.querySelector('.name').innerText = `自己 (${sInfo.name})`;
-            }
+            let nText = pId === 'player-south' ? `自己 (${sInfo.name})` : sInfo.name;
+            if(sInfo.isOffline) nText += " (托管中)";
+            pUI.querySelector('.name').innerText = nText;
+            pUI.style.opacity = sInfo.isOffline ? '0.5' : '1';
         }
         
-        if(i === currentTurnIdx && (gState === 'PLAYING' || gState === 'DRAWING' || gState === 'BURYING_TAKE' || gState === 'BURYING_ACTION')) pUI.classList.add('active-turn');
+        if(i === currentTurnIdx && !sInfo?.isOffline && (gState === 'PLAYING' || gState === 'DRAWING' || gState === 'BURYING_TAKE' || gState === 'BURYING_ACTION')) pUI.classList.add('active-turn');
         else { pUI.classList.remove('active-turn'); pUI.querySelector('.timer-badge').innerText = '0'; }
     }
 }
@@ -184,6 +188,7 @@ socket.on('roomStateSync', d => {
         if (d.seats[i]) {
             let s = d.seats[i];
             let innerHtml = s.isOwner ? `👑 ${s.name}` : (s.isReady ? `✅ ${s.name}` : `⏳ ${s.name}`);
+            if(s.isOffline) innerHtml += ` <span style="color:#e74c3c;">[掉线]</span>`;
             
             if (amIOwner && s.id !== socket.id) {
                 innerHtml += `<div style="margin-top: 8px;">
@@ -199,7 +204,7 @@ socket.on('roomStateSync', d => {
     updateAvatarUI();
     if(amIOwner) {
         let seatedCount = 0, readyCount = 0;
-        d.seats.forEach(s => { if(s){ seatedCount++; if(s.isReady || s.isOwner) readyCount++; }});
+        d.seats.forEach(s => { if(s){ seatedCount++; if(s.isReady || s.isOwner || s.isOffline) readyCount++; }});
         dom.startBtn.disabled = !(seatedCount === 4 && readyCount === 4);
         dom.startBtn.innerText = dom.startBtn.disabled ? "等待全员准备" : "🚀 开始游戏";
     }
@@ -209,7 +214,7 @@ socket.on('hideLobby', () => { dom.lobby.style.display = 'none'; });
 socket.on('showLobbyFallback', () => { dom.lobby.style.display = 'flex'; dom.readyBtn.classList.remove('active'); dom.readyBtn.innerText="点我准备"; });
 
 socket.on('gameStateSync', d => {
-    gState=d.state; mainS=d.mainSuit; isFirstG=d.isFirstGame;
+    gState=d.state; mainS=d.mainSuit; isFirstG=d.isFirstGame; onStagePlayers=d.onStage;
     document.getElementById('current-game').innerText=d.match.currentGame;
     document.getElementById('team1-wins').innerText=d.match.team1Wins;
     document.getElementById('team2-wins').innerText=d.match.team2Wins;
@@ -252,12 +257,7 @@ socket.on('startTimer', s => {
 
 socket.on('initHand', h => { myHand=h; trickClient=[]; renderHand(); });
 socket.on('drawResp', c => { myHand.push(c); renderHand(); });
-
-// 【修复1】监听服务器下发的底牌，追加到本地手牌中
-socket.on('recvBottom', c => {
-    myHand.push(...c);
-    renderHand();
-});
+socket.on('recvBottom', c => { myHand.push(...c); renderHand(); });
 
 socket.on('showPub', c => {
     dom.pubArea.innerHTML = '';
