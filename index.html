@@ -4,43 +4,34 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>硬核山东双扣 - 在线大厅版</title>
-    <link rel="stylesheet" href="style.css?v=3.0">
+    <link rel="stylesheet" href="style.css?v=4.0">
 </head>
 <body>
     <div id="lobby-screen">
         <div class="lobby-box">
             <h2>双扣在线大厅</h2>
             <div id="my-identity" style="color:#f1c40f; font-weight:bold; margin-bottom:15px;">连接中...</div>
-            
             <div class="seat-container">
                 <div class="seat" id="seat-0">空座</div>
                 <div class="seat" id="seat-1">空座</div>
                 <div class="seat" id="seat-2">空座</div>
                 <div class="seat" id="seat-3">空座</div>
             </div>
-
             <div id="owner-panel" style="display:none; margin-top: 20px;">
                 <select id="match-length">
-                    <option value="5">5 局制 (抢先赢3局)</option>
-                    <option value="10">10 局制 (抢先赢6局)</option>
+                    <option value="5">5 局制</option><option value="10">10 局制</option>
                 </select>
-                <button id="start-btn" disabled>等待全员准备...</button>
+                <button id="start-btn" disabled>等待全员准备</button>
             </div>
-            
-            <div id="player-panel" style="display:none; margin-top: 20px;">
-                <button id="ready-btn">点我准备</button>
-            </div>
-
-            <div id="spectator-panel" style="display:none; margin-top: 20px; color:#e74c3c;">
-                座位已满，您处于观众模式 🍿 <br>
-                <span style="font-size:14px; color:#ccc;">(当前观众人数: <span id="spec-count">0</span>)</span>
-            </div>
+            <div id="player-panel" style="display:none; margin-top: 20px;"><button id="ready-btn">点我准备</button></div>
+            <div id="spectator-panel" style="display:none; margin-top: 20px; color:#e74c3c;">您是观众模式 🍿<br><span style="font-size:14px; color:#ccc;">(人数: <span id="spec-count">0</span>)</span></div>
         </div>
     </div>
 
     <div id="scoreboard">
-        <div class="match-info">当前: 第 <span id="current-game">0</span> 局 | 🏆 胜场: [队伍1] <span id="team1-wins">0</span> - <span id="team2-wins">0</span> [队伍2]</div>
+        <div class="match-info">当前: 第 <span id="current-game">0</span> 局 | 🏆 胜场: [队1] <span id="team1-wins">0</span> - <span id="team2-wins">0</span> [队2]</div>
         <div class="main-suit-display">主花色: <span id="main-suit-icon">?</span></div>
+        <div class="team-info">🛡️ 台上: <span id="on-stage-players">...</span></div>
         <div class="team-info highlight">⚔️ 台下得分: <span id="score">0</span></div>
     </div>
 
@@ -52,6 +43,14 @@
                 <div class="battle-slot" id="slot-north"></div>
                 <div class="battle-middle-slots">
                     <div class="battle-slot" id="slot-west"></div>
+                    
+                    <div id="deck-area" style="display:none;">
+                        <div class="pile" id="pile-left"></div>
+                        <div id="target-card-ui" class="target-card-display">?</div>
+                        <div class="pile" id="pile-right"></div>
+                        <div class="deck-count">剩余: <span id="cards-remain">108</span> 张</div>
+                    </div>
+                    
                     <div id="public-cards-area"></div>
                     <div class="battle-slot" id="slot-east"></div>
                 </div>
@@ -65,7 +64,6 @@
         <div class="action-bar">
             <div id="sys-broadcast">系统连接中...</div>
             <div id="timer-display" style="display: none;">⏳ <span id="time-left">0</span>s</div>
-            
             <div class="buttons">
                 <button id="draw-btn" style="display:none; background-color:#3498db;">摸牌</button>
                 <button id="call-btn" style="display:none; background-color:#9b59b6;">亮3定主</button>
