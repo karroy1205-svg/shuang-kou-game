@@ -5,14 +5,13 @@ body { background-color: #1e5f38; color: white; font-family: sans-serif; margin:
 .seat { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; border: 1px solid #7f8c8d; font-size: 18px; }
 .seat.ready { border-color: #2ecc71; box-shadow: 0 0 10px rgba(46, 204, 113, 0.6); color: #2ecc71; }
 .seat.owner { border-color: #f1c40f; color: #f1c40f; font-weight: bold; }
-#match-length { font-size: 16px; padding: 10px; border-radius: 5px; margin-right: 10px; }
+#match-length { font-size: 16px; padding: 10px; border-radius: 5px; margin-right: 10px; background: #34495e; color: white; border: 1px solid #7f8c8d; }
 .lobby-box button { font-size: 18px; padding: 10px 30px; border: none; border-radius: 5px; color: white; cursor: pointer; }
 #start-btn { background: #e67e22; } #start-btn:disabled { background: #7f8c8d; cursor: not-allowed; }
 #ready-btn { background: #3498db; } #ready-btn.active { background: #2ecc71; }
 
 #scoreboard { display: flex; justify-content: space-around; background: rgba(0,0,0,0.7); padding: 10px; border-bottom: 2px solid #f1c40f; }
 
-/* ！！核心：四人围坐物理牌桌 ！！ */
 #game-table { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle, #27ae60 0%, #1e5f38 100%); }
 #battle-area { width: 500px; height: 260px; border: 2px dashed rgba(255,255,255,0.15); border-radius: 50%; position: relative; }
 
@@ -29,11 +28,8 @@ body { background-color: #1e5f38; color: white; font-family: sans-serif; margin:
 .info { background: rgba(0,0,0,0.5); border-radius: 5px; padding: 2px 5px; font-size: 12px; margin-top: 5px; text-align: center; }
 .info .name { font-weight: bold; color: #f1c40f; }
 
-/* 出牌槽位绝对绑定头像前方 */
 .battle-slot { position: absolute; display: flex; justify-content: center; align-items: center; width: 120px; height: 100px; }
-#slot-north { top: 80px; left: 0; }
-#slot-west { left: 100px; top: -20px; }
-#slot-east { right: 100px; top: -20px; }
+#slot-north { top: 80px; left: 0; } #slot-west { left: 100px; top: -20px; } #slot-east { right: 100px; top: -20px; }
 .battle-slot .playing-card { position: static; transform: scale(0.65); margin-left: -35px; cursor: default; }
 .battle-slot .playing-card:first-child { margin-left: 0; }
 
@@ -56,9 +52,13 @@ body { background-color: #1e5f38; color: white; font-family: sans-serif; margin:
 .trump-glow { box-shadow: 0 0 10px #f1c40f; border: 2px solid #f1c40f; }
 button { padding: 8px 20px; font-size: 16px; font-weight: bold; border-radius: 5px; cursor: pointer; border: none; color: white; }
 
-/* ！！新增：聊天窗 ！！ */
 #chat-window { position: fixed; bottom: 0; left: 10px; width: 300px; background: rgba(0,0,0,0.8); border-radius: 8px 8px 0 0; border: 1px solid #555; z-index: 100; transition: 0.3s; transform: translateY(calc(100% - 35px)); }
 #chat-window.open { transform: translateY(0); }
 .chat-header { background: #2c3e50; padding: 8px 15px; color: white; font-weight: bold; border-radius: 8px 8px 0 0; cursor: pointer; display: flex; justify-content: space-between; }
 #chat-messages { list-style: none; margin: 0; padding: 10px; height: 150px; overflow-y: auto; font-size: 12px; color: #ecf0f1; }
 #chat-messages li { margin-bottom: 5px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 2px; }
+
+/* 房主管理专用按钮样式 */
+.action-btn-small { padding: 4px 8px; border-radius: 4px; color: white; cursor: pointer; font-size: 12px; margin: 0 2px; }
+.btn-kick { background-color: #c0392b; }
+.btn-transfer { background-color: #f39c12; }
