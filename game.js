@@ -32,7 +32,6 @@ function getW(c) {
     return (c.suit===mainS?20000:0) + sB[c.suit] + pt;
 }
 
-// ！！核心修复：状态统一分配中心，确保扣底按钮绝不卡死 ！！
 function updateUI() {
     let isMe = (currentTurnIdx === myIdx) && !amISpectator;
     dom.btns.draw.style.display = 'none'; dom.btns.call.style.display = 'none'; dom.btns.over.style.display = 'none';
@@ -47,7 +46,6 @@ function updateUI() {
             if(pair3) { dom.btns.over.style.display = 'inline-block'; dom.btns.over.dataset.suit = pair3; }
         }
     }
-    // 修复扣牌卡死
     if (gState === 'BURYING_TAKE' && isMe) dom.btns.take.style.display = 'inline-block';
     if (gState === 'BURYING_ACTION' && isMe) dom.btns.bury.style.display = 'inline-block';
     if (gState === 'PLAYING' && isMe) dom.btns.play.style.display = 'inline-block';
@@ -61,7 +59,13 @@ function renderHand() {
         if(isTrumpOn && getEffSuit(c)==='trump') div.classList.add('trump-glow');
         let isRed = (c.suit==='♥'||c.suit==='♦'||c.value==='大王');
         div.innerHTML = `<div class="card-corner" style="color:${isRed?'#d32f2f':'#333'}"><span>${getVal(c)}</span><span>${c.suit==='Joker'?'王':c.suit}</span></div>`;
-        div.onclick = () => { if(!amISpectator && (gState === 'BURYING_ACTION' || gState === 'PLAYING')) { div.classList.toggle('selected'); div.style.zIndex = div.classList.contains('selected')?i+100:i; } };
+        
+        // 【修复】移除 z-index，完全依赖 DOM 流来实现层叠效果（右压左）
+        div.onclick = () => { 
+            if(!amISpectator && (gState === 'BURYING_ACTION' || gState === 'PLAYING')) { 
+                div.classList.toggle('selected'); 
+            } 
+        };
         box.appendChild(div);
     });
     updateUI();
@@ -90,10 +94,11 @@ dom.btns.play.onclick = () => {
     let ids = Array.from(sels).map(n=>parseInt(n.dataset.index)).sort((a,b)=>b-a);
     let cards = ids.map(idx => myHand[idx]); 
     
-    if(cards.length > 2) return alert("单次仅允许出单张或对子！");
-    if(cards.length === 2 && (cards[0].value !== cards[1].value || cards[0].suit !== cards[1].suit)) return alert("两张牌必须是绝对同花色对子！");
-
-    if(trickClient.length > 0) {
+    // 【修复】重构跟牌与首发判定逻辑，放宽垫牌限制
+    if(trickClient.length === 0) {
+        if(cards.length > 2) return alert("首发出牌单次仅允许单张或对子！");
+        if(cards.length === 2 && (cards[0].value !== cards[1].value || cards[0].suit !== cards[1].suit)) return alert("首发两张牌必须是绝对同花色对子！");
+    } else {
         let leadCards = trickClient[0].cards;
         if(cards.length !== leadCards.length) return alert(`必须出 ${leadCards.length} 张！`);
         let leadSuit = getEffSuit(leadCards[0]);
@@ -105,7 +110,7 @@ dom.btns.play.onclick = () => {
             }
         } else if (leadCards.length === 2) {
             let isPlayPair = cards[0].value === cards[1].value && cards[0].suit === cards[1].suit;
-            let playSuit = getEffSuit(cards[0]);
+            let playSuit = isPlayPair ? getEffSuit(cards[0]) : null;
             let leadSuitHand = myHand.filter(c => getEffSuit(c) === leadSuit);
             let hasLeadPair = false;
             for(let i=0; i<leadSuitHand.length-1; i++){ if(leadSuitHand[i].value === leadSuitHand[i+1].value && leadSuitHand[i].suit === leadSuitHand[i+1].suit) hasLeadPair = true; }
@@ -116,6 +121,7 @@ dom.btns.play.onclick = () => {
                 let playedLeadCount = cards.filter(c => getEffSuit(c) === leadSuit).length;
                 if (leadSuitHand.length >= 2 && playedLeadCount < 2) return alert(`必须尽量跟出2张【${leadSuit==='trump'?'主牌':leadSuit}】！`);
                 if (leadSuitHand.length === 1 && playedLeadCount < 1) return alert(`必须跟出1张【${leadSuit==='trump'?'主牌':leadSuit}】！`);
+                // 只要满足了上述尽量跟花色的条件，其余牌允许随意垫！没有任何 alert！
             }
         }
     }
@@ -152,19 +158,14 @@ function updateAvatarUI() {
 
 socket.on('roomStateSync', d => { 
     roomInfo = d.seats; document.getElementById('spec-count').innerText = d.spectatorsCount; 
-    
-    // ！！核心修复：大厅空座终于可以刷新了！！
     for(let i=0; i<4; i++) {
         let seatUI = document.getElementById(`seat-${i}`);
         if (d.seats[i]) {
             let s = d.seats[i];
             seatUI.innerHTML = s.isOwner ? `👑 ${s.name}` : (s.isReady ? `✅ ${s.name}` : `⏳ ${s.name}`);
             seatUI.className = 'seat' + (s.isOwner ? ' owner' : '') + (s.isReady ? ' ready' : '');
-        } else {
-            seatUI.innerHTML = '空座'; seatUI.className = 'seat';
-        }
+        } else { seatUI.innerHTML = '空座'; seatUI.className = 'seat'; }
     }
-
     updateAvatarUI();
     if(amIOwner) {
         let seatedCount = 0, readyCount = 0;
@@ -191,10 +192,7 @@ socket.on('gameStateSync', d => {
         for(let i=0; i<4; i++) {
             let diff = amISpectator ? i : (i - myIdx + 4) % 4;
             let pId = ['player-south','player-east','player-north','player-west'][diff];
-            if(pId !== 'player-south') {
-                let pUI = document.getElementById(pId);
-                if(pUI) pUI.querySelector('.card-count').innerText = d.cardCounts[i];
-            }
+            if(pId !== 'player-south') { let pUI = document.getElementById(pId); if(pUI) pUI.querySelector('.card-count').innerText = d.cardCounts[i]; }
         }
     }
     renderHand(); updateAvatarUI();
@@ -234,8 +232,6 @@ socket.on('showPub', c => {
     });
 });
 socket.on('clearPub', () => dom.pubArea.innerHTML='');
-
-socket.on('recvBottom', c => { myHand.push(...c); renderHand(); });
 
 socket.on('turnUpd', t => { currentTurnIdx = t; updateAvatarUI(); updateUI(); });
 socket.on('takeBottomSig', t => { currentTurnIdx = t; updateAvatarUI(); updateUI(); });
