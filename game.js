@@ -1,37 +1,25 @@
 const socket = io();
-let myHand = [], myIdx = -1, mainS = '?', gState = 'LOBBY', isTrumpOn = false;
+let myHand = [], myIdx = -1, mainS = '?', gState = 'LOBBY', isTrumpOn = false, isFirstG = false;
 let localTimer = null, trickClient = [];
 let amISpectator = false, amIOwner = false, myName = "";
-let roomInfo = []; // 存座位信息
+let roomInfo = []; 
 
 const dom = {
-    lobby: document.getElementById('lobby-screen'),
-    ident: document.getElementById('my-identity'),
-    startBtn: document.getElementById('start-btn'),
-    readyBtn: document.getElementById('ready-btn'),
-    ownerPan: document.getElementById('owner-panel'),
-    playerPan: document.getElementById('player-panel'),
-    specPan: document.getElementById('spectator-panel'),
-    bc: document.getElementById('sys-broadcast'),
-    timer: document.getElementById('time-left'),
-    pub: document.getElementById('public-cards-area'),
-    btns: {
-        draw: document.getElementById('draw-btn'), call: document.getElementById('call-btn'),
-        over: document.getElementById('override-btn'), want: document.getElementById('want-btn'),
-        take: document.getElementById('take-bottom-btn'), bury: document.getElementById('bury-btn'), play: document.getElementById('play-btn')
-    }
+    lobby: document.getElementById('lobby-screen'), ident: document.getElementById('my-identity'),
+    startBtn: document.getElementById('start-btn'), readyBtn: document.getElementById('ready-btn'),
+    ownerPan: document.getElementById('owner-panel'), playerPan: document.getElementById('player-panel'), specPan: document.getElementById('spectator-panel'),
+    bc: document.getElementById('sys-broadcast'), timer: document.getElementById('time-left'),
+    deckArea: document.getElementById('deck-area'), pubArea: document.getElementById('public-cards-area'),
+    targetCardUI: document.getElementById('target-card-ui'), cardsRemain: document.getElementById('cards-remain'),
+    pileL: document.getElementById('pile-left'), pileR: document.getElementById('pile-right'),
+    btns: { draw: document.getElementById('draw-btn'), call: document.getElementById('call-btn'), over: document.getElementById('override-btn'), want: document.getElementById('want-btn'), take: document.getElementById('take-bottom-btn'), bury: document.getElementById('bury-btn'), play: document.getElementById('play-btn') }
 };
 
 function getVal(c) { return c.value === '大王' ? '大' : (c.value === '小王' ? '小' : c.value); }
-function renderPub(cards) {
-    dom.pub.innerHTML = '';
-    cards.forEach(c => {
-        let div = document.createElement('div'); div.className = 'playing-card';
-        let isRed = (c.suit === '♥' || c.suit === '♦' || c.value === '大王');
-        div.innerHTML = `<div class="card-corner" style="color:${isRed?'#d32f2f':'#333'}"><span>${getVal(c)}</span><span>${c.suit==='Joker'?'王':c.suit}</span></div>`;
-        dom.pub.appendChild(div);
-    });
-}
+
+// ==========================================
+// 核心逻辑
+// ==========================================
 function getW(c) {
     const sB = {'♠':3000,'♥':2000,'♣':1000,'♦':0}, pt = {'4':4,'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14}[c.value]||0;
     if(c.value==='5') return c.suit===mainS?100000:90000+sB[c.suit];
@@ -53,18 +41,22 @@ function renderHand() {
         box.appendChild(div);
     });
     
-    if(!amISpectator) {
+    if(!amISpectator && !isFirstG) {
         let has3 = myHand.some(c=>c.value==='3'), pair3 = null, counts={};
         myHand.forEach(c=>{ if(c.value==='3'){ counts[c.suit]=(counts[c.suit]||0)+1; if(counts[c.suit]===2)pair3=c.suit; }});
         dom.btns.call.style.display = (gState==='DRAWING'&&has3&&mainS==='?')?'inline-block':'none';
         dom.btns.over.style.display = (gState==='DRAWING'&&pair3)?'inline-block':'none';
         if(pair3) dom.btns.over.dataset.suit = pair3;
+    } else {
+        dom.btns.call.style.display = 'none'; dom.btns.over.style.display = 'none';
     }
 }
 
+// ==========================================
 // 按钮交互
+// ==========================================
 dom.readyBtn.onclick = () => { socket.emit('toggleReady'); dom.readyBtn.classList.toggle('active'); dom.readyBtn.innerText = dom.readyBtn.classList.contains('active')?"已准备":"点我准备"; };
-dom.startBtn.onclick = () => socket.emit('startGame', document.getElementById('match-length').value);
+dom.startBtn.onclick = () => { socket.emit('startGame', document.getElementById('match-length').value); };
 dom.btns.draw.onclick = () => { socket.emit('reqDraw'); dom.btns.draw.style.display='none'; };
 dom.btns.call.onclick = () => { socket.emit('callTrump', myHand.find(c=>c.value==='3').suit); dom.btns.call.style.display='none';};
 dom.btns.over.onclick = () => { socket.emit('overrideTrump', dom.btns.over.dataset.suit); dom.btns.over.style.display='none';};
@@ -93,64 +85,85 @@ socket.on('seatAssigned', d => {
     dom.playerPan.style.display = (!amIOwner && !amISpectator) ? 'block' : 'none';
     dom.specPan.style.display = 'none';
 });
-
 socket.on('spectatorMode', name => {
-    amISpectator = true; myName = name;
-    dom.ident.innerText = `你是: ${myName} (观众)`;
+    amISpectator = true; myName = name; dom.ident.innerText = `你是: ${myName} (观众)`;
     dom.ownerPan.style.display = 'none'; dom.playerPan.style.display = 'none'; dom.specPan.style.display = 'block';
 });
 
 socket.on('roomStateSync', d => {
     roomInfo = d.seats;
     document.getElementById('spec-count').innerText = d.spectatorsCount;
-    if(d.state !== 'LOBBY') dom.lobby.style.display = 'none';
-    else dom.lobby.style.display = 'flex';
-
-    // 渲染大厅座位状态
     let readyCount = 0, seatedCount = 0;
     for(let i=0; i<4; i++) {
         let seatUI = document.getElementById(`seat-${i}`);
-        let oppUI = document.getElementById(`opp-${['south','east','north','west'][(i - myIdx + 4) % 4]}`); // 根据相对位置推算桌面UI
-        
+        let oppUI = document.getElementById(`opp-${['south','east','north','west'][(i - myIdx + 4) % 4]}`); 
         if (d.seats[i]) {
-            seatedCount++;
-            let s = d.seats[i];
+            seatedCount++; let s = d.seats[i];
             if(s.isReady || s.isOwner) readyCount++;
-            
             seatUI.innerHTML = s.isOwner ? `👑 ${s.name}` : (s.isReady ? `✅ ${s.name}` : `⏳ ${s.name}`);
             seatUI.className = 'seat' + (s.isOwner ? ' owner' : '') + (s.isReady ? ' ready' : '');
-            
-            // 更新游戏里的桌面名字
             if(oppUI) oppUI.innerHTML = `🪑 ${s.name}<br>🎴 准备中`;
         } else {
             seatUI.innerHTML = '空座'; seatUI.className = 'seat';
         }
     }
-    
-    // 房主按钮权限
     if(amIOwner) {
         dom.startBtn.disabled = !(seatedCount === 4 && readyCount === 4);
-        dom.startBtn.innerText = dom.startBtn.disabled ? "等待全员准备..." : "🚀 开始游戏";
+        dom.startBtn.innerText = dom.startBtn.disabled ? "等待全员准备" : "🚀 开始游戏";
     }
 });
 
-socket.on('systemMsg', m => dom.bc.innerText=m);
-socket.on('startTimer', s => { clearInterval(localTimer); let l=s; dom.timer.innerText=l; localTimer=setInterval(()=>{l--;if(l>=0)dom.timer.innerText=l;else clearInterval(localTimer);},1000);});
+// ！！完美修复大厅遮挡！！
+socket.on('hideLobby', () => { dom.lobby.style.display = 'none'; });
+socket.on('showLobbyFallback', () => { dom.lobby.style.display = 'flex'; });
+
 socket.on('gameStateSync', d => {
-    gState=d.state; mainS=d.mainSuit;
+    gState=d.state; mainS=d.mainSuit; isFirstG=d.isFirstGame;
     document.getElementById('current-game').innerText=d.match.currentGame;
     document.getElementById('team1-wins').innerText=d.match.team1Wins;
     document.getElementById('team2-wins').innerText=d.match.team2Wins;
     document.getElementById('main-suit-icon').innerText=mainS;
     document.getElementById('score').innerText=d.score;
+    
+    let stageStr = d.onStage.length > 0 ? d.onStage.map(i=>roomInfo[i]?roomInfo[i].name:"?").join(', ') : "迷雾中(等待抓天命牌)";
+    document.getElementById('on-stage-players').innerText = stageStr;
     renderHand();
 });
+
+// ！！真实摸牌动态 UI ！！
+socket.on('deckSync', d => {
+    dom.deckArea.style.display = d.remain > 0 ? 'flex' : 'none';
+    dom.cardsRemain.innerText = d.remain;
+    
+    // 模拟牌堆变矮
+    let shadowVal = Math.ceil(d.remain / 20); 
+    dom.pileL.style.boxShadow = `${shadowVal}px ${shadowVal}px 0 #95a5a6`;
+    dom.pileR.style.boxShadow = `${shadowVal}px ${shadowVal}px 0 #95a5a6`;
+
+    if (d.target) {
+        dom.targetCardUI.style.display = 'flex';
+        let isRed = (d.target.suit==='♥'||d.target.suit==='♦');
+        dom.targetCardUI.innerHTML = `<span style="color:${isRed?'#d32f2f':'#333'}">${getVal(d.target)}<br>${d.target.suit}</span>`;
+    } else {
+        dom.targetCardUI.style.display = 'none';
+    }
+});
+
+socket.on('systemMsg', m => dom.bc.innerText=m);
+socket.on('startTimer', s => { clearInterval(localTimer); let l=s; dom.timer.innerText=l; localTimer=setInterval(()=>{l--;if(l>=0)dom.timer.innerText=l;else clearInterval(localTimer);},1000);});
 socket.on('initHand', h => { myHand=h; trickClient=[]; renderHand(); });
 socket.on('drawResp', c => { myHand.push(c); renderHand(); });
-socket.on('showPub', c => renderPub(c));
-socket.on('clearPub', () => dom.pub.innerHTML='');
+socket.on('showPub', c => {
+    dom.pubArea.innerHTML = '';
+    c.forEach(card => {
+        let div = document.createElement('div'); div.className = 'playing-card'; div.style.transform = 'scale(0.8)'; div.style.marginLeft = '0';
+        let isRed = (card.suit==='♥'||card.suit==='♦'||card.value==='大王');
+        div.innerHTML = `<div class="card-corner" style="color:${isRed?'#d32f2f':'#333'}"><span>${getVal(card)}</span><span>${card.suit==='Joker'?'王':card.suit}</span></div>`;
+        dom.pubArea.appendChild(div);
+    });
+});
+socket.on('clearPub', () => dom.pubArea.innerHTML='');
 socket.on('recvBottom', c => { myHand.push(...c); renderHand(); });
-
 socket.on('turnUpd', t => { 
     if(amISpectator) return;
     dom.btns.draw.style.display = (gState==='DRAWING'&&t===myIdx)?'inline-block':'none';
@@ -158,7 +171,7 @@ socket.on('turnUpd', t => {
 });
 socket.on('takeBottomSig', t => dom.btns.take.style.display = (!amISpectator && t===myIdx)?'inline-block':'none');
 socket.on('playerPlayed', d => {
-    let diff = amISpectator ? d.idx : (d.idx - myIdx + 4)%4; // 观众默认看绝对视角
+    let diff = amISpectator ? d.idx : (d.idx - myIdx + 4)%4; 
     let slot = document.getElementById(['slot-south','slot-east','slot-north','slot-west'][diff]);
     slot.innerHTML = ''; d.cards.forEach(c => {
         let div = document.createElement('div'); div.className='playing-card'; div.style.transform='scale(0.8)'; div.style.marginLeft='-45px';
