@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>硬核山东双扣 - 商业正规桌</title>
-    <link rel="stylesheet" href="style.css?v=8.2">
+    <link rel="stylesheet" href="style.css?v=9.0">
 </head>
 <body>
     <div id="lobby-screen">
@@ -54,6 +54,8 @@
     </div>
 
     <div id="game-table">
+        <div id="danmaku-container"></div>
+
         <div class="player-seat pos-north" id="player-north">
             <div class="avatar">👤<div class="timer-badge">0</div></div>
             <div class="info"><span class="name">待定</span><br>🎴 <span class="card-count">0</span></div>
@@ -104,8 +106,12 @@
     </div>
 
     <div id="chat-window">
-        <div class="chat-header" id="chat-header">系统日志 💬</div>
+        <div class="chat-header" id="chat-header">房间交流与日志 💬</div>
         <ul id="chat-messages"></ul>
+        <div class="chat-input-area">
+            <input type="text" id="chat-input" placeholder="按 Enter 发送弹幕..." maxlength="30">
+            <button id="chat-send-btn">发送</button>
+        </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
