@@ -14,7 +14,7 @@ let roomOwnerId = null;
 
 let matchConfig = { totalGames: 5, currentGame: 0, team1Wins: 0, team2Wins: 0 };
 let teamOnStage = []; 
-let gameState = 'LOBBY'; // LOBBY, DRAWING, POST_DRAW, NEGOTIATING, BURYING_TAKE, BURYING_ACTION, PLAYING
+let gameState = 'LOBBY'; 
 let deck = [], bottomCards = [], hands = [[], [], [], []];
 let currentMainSuit = '?', isTrumpOverridden = false;
 let currentTurnIndex = 0, drawCount = 0;
@@ -23,7 +23,7 @@ let wantStatus = { p1: null, p2: null };
 let turnTimer = null;
 let targetCard = null; 
 
-const nicknames = ["海淀赌神", "朝阳群众", "双扣狂魔", "摸鱼达人", "绝命毒师", "天选之子", "键盘刺客", "西二旗卷王"];
+const baseNicknames = ["海淀赌神", "朝阳群众", "双扣狂魔", "摸鱼达人", "绝命毒师", "天选之子", "键盘刺客", "西二旗卷王"];
 
 function emitSys(msg) { io.emit('systemMsg', msg); }
 function startTimer(sec, cb) { 
@@ -221,25 +221,14 @@ function handlePlayCards(pIndex, cards) {
         let hiW = -1, winIdx = -1, pts = 0;
         
         currentTrick.forEach(p => {
-            // 累加本轮所有的 5, 10, K 分数
             pts += p.cards.reduce((sum, c) => sum + (c.value === '5' ? 5 : (['10','K'].includes(c.value) ? 10 : 0)), 0);
-            
             let isPair = p.cards.length === 2 && p.cards[0].value === p.cards[1].value && p.cards[0].suit === p.cards[1].suit;
             let w = -1;
             
-            // 严格对齐首发牌型：首发单牌只能比单牌，首发对子只能比对子
-            if (leadCards.length === 1 && p.cards.length === 1) {
-                w = getW(p.cards[0], leadSuit);
-            } else if (isLeadPair && isPair) {
-                w = getW(p.cards[0], leadSuit);
-            }
+            if (leadCards.length === 1 && p.cards.length === 1) w = getW(p.cards[0], leadSuit);
+            else if (isLeadPair && isPair) w = getW(p.cards[0], leadSuit);
             
-            // 【核心修复】严格使用 ">" (而不是 ">=")。只有权重严格大于当前最大值时，才易主。
-            // 这样能绝对保证：如果两个人出的牌权重一样（比如两张同花色K），永远是先出牌的那个人为大。
-            if (w > hiW) { 
-                hiW = w; 
-                winIdx = p.idx; 
-            }
+            if (w > hiW) { hiW = w; winIdx = p.idx; }
         });
         
         if (!teamOnStage.includes(winIdx)) { offStageScore += pts; broadcastGameState(); }
@@ -250,8 +239,19 @@ function handlePlayCards(pIndex, cards) {
             let winTeam1 = (offStageScore < 80);
             if (teamOnStage.includes(0)) { if(winTeam1) matchConfig.team1Wins++; else { matchConfig.team2Wins++; teamOnStage=[1,3]; } }
             else { if(!winTeam1) matchConfig.team2Wins++; else { matchConfig.team1Wins++; teamOnStage=[0,2]; } }
-            emitSys(`局终！台下得分：${offStageScore}。8秒后下一局...`);
-            setTimeout(startNewGame, 8000); return;
+            
+            if (matchConfig.currentGame >= matchConfig.totalGames) {
+                emitSys(`🏆 比赛结束！总胜场: [队1] ${matchConfig.team1Wins} - ${matchConfig.team2Wins} [队2]`);
+                setTimeout(() => {
+                    gameState = 'LOBBY'; clearTimeout(turnTimer);
+                    seats.forEach(s => { if(s) s.isReady = false; });
+                    io.emit('showLobbyFallback'); broadcastRoomState();
+                }, 8000);
+            } else {
+                emitSys(`局终！台下得分：${offStageScore}。8秒后下一局...`);
+                setTimeout(startNewGame, 8000);
+            }
+            return;
         }
         
         emitSys(`本轮结束，[${seats[winIdx].nickname}] 大。`);
@@ -269,12 +269,14 @@ function handlePlayCards(pIndex, cards) {
 }
 
 io.on('connection', (socket) => {
-    socket.nickname = nicknames[Math.floor(Math.random() * nicknames.length)] + Math.floor(Math.random() * 100);
+    socket.baseName = baseNicknames[Math.floor(Math.random() * baseNicknames.length)];
+    socket.nickname = socket.baseName; 
     socket.isReady = false; socket.isOwner = false;
 
     let emptyIdx = seats.findIndex(s => s === null);
     if (emptyIdx !== -1 && gameState === 'LOBBY') {
         socket.seatIndex = emptyIdx; seats[emptyIdx] = socket;
+        socket.nickname = `【${emptyIdx + 1}号${socket.baseName}】`; 
         if (!roomOwnerId) { roomOwnerId = socket.id; socket.isOwner = true; }
         io.to(socket.id).emit('seatAssigned', { seatIndex: emptyIdx, nickname: socket.nickname, isOwner: socket.isOwner });
     } else {
@@ -289,21 +291,50 @@ io.on('connection', (socket) => {
             seats[socket.seatIndex] = null; emitSys(`[${socket.nickname}] 退出`);
             if (socket.isOwner) {
                 let nextPlayer = seats.find(s => s !== null);
-                if (nextPlayer) { nextPlayer.isOwner = true; roomOwnerId = nextPlayer.id; } else roomOwnerId = null;
+                if (nextPlayer) { 
+                    nextPlayer.isOwner = true; roomOwnerId = nextPlayer.id; 
+                    io.to(nextPlayer.id).emit('ownerChanged', true); 
+                } else roomOwnerId = null;
             }
             if (gameState !== 'LOBBY') {
-                gameState = 'LOBBY'; clearTimeout(turnTimer); emitSys("⚠️ 有人掉线，返回大厅。");
+                gameState = 'LOBBY'; clearTimeout(turnTimer); emitSys("⚠️ 有人掉线，比赛中断返回大厅。");
                 seats.forEach(s => { if(s) s.isReady = false; }); io.emit('showLobbyFallback'); 
             }
         }
         broadcastRoomState();
     });
 
+    socket.on('kickPlayer', targetId => {
+        if (socket.isOwner && gameState === 'LOBBY') {
+            let tSocket = io.sockets.sockets.get(targetId);
+            if (tSocket) { emitSys(`👢 [${tSocket.nickname}] 被房主移出房间`); tSocket.disconnect(); }
+        }
+    });
+
+    socket.on('transferOwner', targetId => {
+        if (socket.isOwner && gameState === 'LOBBY') {
+            let targetSocket = seats.find(s => s && s.id === targetId);
+            if (targetSocket) {
+                socket.isOwner = false; targetSocket.isOwner = true; roomOwnerId = targetSocket.id;
+                io.to(socket.id).emit('ownerChanged', false);
+                io.to(targetSocket.id).emit('ownerChanged', true);
+                emitSys(`👑 房主权限已移交给 [${targetSocket.nickname}]`);
+                broadcastRoomState();
+            }
+        }
+    });
+
     socket.on('toggleReady', () => { if (!socket.isOwner && !socket.isSpectator && gameState === 'LOBBY') { socket.isReady = !socket.isReady; broadcastRoomState(); }});
-    socket.on('startGame', (len) => {
+    socket.on('startGame', (config) => {
         if (socket.isOwner && gameState === 'LOBBY') {
             let readyCount = seats.filter(s => s !== null && (s.isReady || s.isOwner)).length;
-            if (seats.filter(s => s !== null).length === 4 && readyCount === 4) { matchConfig.totalGames = parseInt(len); startNewGame(); } 
+            if (seats.filter(s => s !== null).length === 4 && readyCount === 4) { 
+                matchConfig.totalGames = parseInt(config.len); 
+                if (config.reset) {
+                    matchConfig.currentGame = 0; matchConfig.team1Wins = 0; matchConfig.team2Wins = 0; offStageScore = 0;
+                }
+                startNewGame(); 
+            } 
         }
     });
 
