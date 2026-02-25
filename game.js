@@ -32,14 +32,14 @@ function getW(c) {
     return (c.suit===mainS?20000:0) + sB[c.suit] + pt;
 }
 
-// ！！核心修复：状态统一分配中心，杜绝按钮残留 ！！
+// ！！核心修复：状态统一分配中心，确保扣底按钮绝不卡死 ！！
 function updateUI() {
     let isMe = (currentTurnIdx === myIdx) && !amISpectator;
     dom.btns.draw.style.display = 'none'; dom.btns.call.style.display = 'none'; dom.btns.over.style.display = 'none';
     dom.btns.want.style.display = 'none'; dom.btns.take.style.display = 'none'; dom.btns.bury.style.display = 'none'; dom.btns.play.style.display = 'none';
 
-    if (gState === 'DRAWING') {
-        if(isMe) dom.btns.draw.style.display = 'inline-block';
+    if (gState === 'DRAWING' || gState === 'POST_DRAW') {
+        if(gState === 'DRAWING' && isMe) dom.btns.draw.style.display = 'inline-block';
         if(!amISpectator && !isFirstG) {
             let has3 = myHand.some(c=>c.value==='3'), pair3 = null, counts={};
             myHand.forEach(c=>{ if(c.value==='3'){ counts[c.suit]=(counts[c.suit]||0)+1; if(counts[c.suit]===2)pair3=c.suit; }});
@@ -47,6 +47,9 @@ function updateUI() {
             if(pair3) { dom.btns.over.style.display = 'inline-block'; dom.btns.over.dataset.suit = pair3; }
         }
     }
+    // 修复扣牌卡死
+    if (gState === 'BURYING_TAKE' && isMe) dom.btns.take.style.display = 'inline-block';
+    if (gState === 'BURYING_ACTION' && isMe) dom.btns.bury.style.display = 'inline-block';
     if (gState === 'PLAYING' && isMe) dom.btns.play.style.display = 'inline-block';
 }
 
@@ -58,7 +61,7 @@ function renderHand() {
         if(isTrumpOn && getEffSuit(c)==='trump') div.classList.add('trump-glow');
         let isRed = (c.suit==='♥'||c.suit==='♦'||c.value==='大王');
         div.innerHTML = `<div class="card-corner" style="color:${isRed?'#d32f2f':'#333'}"><span>${getVal(c)}</span><span>${c.suit==='Joker'?'王':c.suit}</span></div>`;
-        div.onclick = () => { if(!amISpectator) { div.classList.toggle('selected'); div.style.zIndex = div.classList.contains('selected')?i+100:i; } };
+        div.onclick = () => { if(!amISpectator && (gState === 'BURYING_ACTION' || gState === 'PLAYING')) { div.classList.toggle('selected'); div.style.zIndex = div.classList.contains('selected')?i+100:i; } };
         box.appendChild(div);
     });
     updateUI();
@@ -71,22 +74,24 @@ dom.btns.draw.onclick = () => { socket.emit('reqDraw'); dom.btns.draw.style.disp
 dom.btns.call.onclick = () => { socket.emit('callTrump', myHand.find(c=>c.value==='3').suit); dom.btns.call.style.display='none';};
 dom.btns.over.onclick = () => { socket.emit('overrideTrump', dom.btns.over.dataset.suit); dom.btns.over.style.display='none';};
 dom.btns.want.onclick = () => { socket.emit('toggleWant', true); dom.btns.want.style.display='none'; };
-dom.btns.take.onclick = () => { socket.emit('takeBottomAck'); dom.btns.take.style.display='none'; gState = 'BURYING'; updateUI(); dom.btns.bury.style.display='inline-block'; };
+dom.btns.take.onclick = () => { socket.emit('takeBottomAck'); dom.btns.take.style.display='none'; };
+
 dom.btns.bury.onclick = () => {
     let sels = document.querySelectorAll('.selected'); if(sels.length!==8)return alert("请选8张");
     let ids = Array.from(sels).map(n=>parseInt(n.dataset.index)).sort((a,b)=>b-a);
-    let cards = ids.map(idx => myHand[idx]); ids.forEach(idx => myHand.splice(idx,1));
-    socket.emit('buryCards', cards); gState = 'WAITING'; updateUI(); renderHand();
+    let buriedCards = ids.map(idx => myHand[idx]); 
+    ids.forEach(idx => myHand.splice(idx,1));
+    socket.emit('buryCards', { buried: buriedCards, leftoverHand: myHand }); 
+    dom.btns.bury.style.display='none'; renderHand();
 };
 
-// ！！核心：极度硬核的出牌防作弊引擎 ！！
 dom.btns.play.onclick = () => {
     let sels = document.querySelectorAll('.selected'); if(sels.length===0)return;
     let ids = Array.from(sels).map(n=>parseInt(n.dataset.index)).sort((a,b)=>b-a);
     let cards = ids.map(idx => myHand[idx]); 
     
     if(cards.length > 2) return alert("单次仅允许出单张或对子！");
-    if(cards.length === 2 && cards[0].value !== cards[1].value) return alert("两张牌必须是绝对同花色对子！");
+    if(cards.length === 2 && (cards[0].value !== cards[1].value || cards[0].suit !== cards[1].suit)) return alert("两张牌必须是绝对同花色对子！");
 
     if(trickClient.length > 0) {
         let leadCards = trickClient[0].cards;
@@ -99,11 +104,11 @@ dom.btns.play.onclick = () => {
                 return alert(`非法操作！手里还有【${leadSuit==='trump'?'主牌':leadSuit}】，必须单出跟牌！`);
             }
         } else if (leadCards.length === 2) {
-            let isPlayPair = cards[0].value === cards[1].value;
+            let isPlayPair = cards[0].value === cards[1].value && cards[0].suit === cards[1].suit;
             let playSuit = getEffSuit(cards[0]);
             let leadSuitHand = myHand.filter(c => getEffSuit(c) === leadSuit);
             let hasLeadPair = false;
-            for(let i=0; i<leadSuitHand.length-1; i++){ if(leadSuitHand[i].value === leadSuitHand[i+1].value) hasLeadPair = true; }
+            for(let i=0; i<leadSuitHand.length-1; i++){ if(leadSuitHand[i].value === leadSuitHand[i+1].value && leadSuitHand[i].suit === leadSuitHand[i+1].suit) hasLeadPair = true; }
             
             if (hasLeadPair) {
                 if (!isPlayPair || playSuit !== leadSuit) return alert(`非法操作！手里有【${leadSuit==='trump'?'主牌':leadSuit}对子】，必须出对子跟！`);
@@ -117,7 +122,7 @@ dom.btns.play.onclick = () => {
 
     ids.forEach(idx => myHand.splice(idx,1));
     socket.emit('playCards', { played: cards, leftoverHand: myHand });
-    updateUI(); renderHand();
+    dom.btns.play.style.display='none'; renderHand();
 };
 
 socket.on('seatAssigned', d => {
@@ -140,13 +145,27 @@ function updateAvatarUI() {
         let sInfo = roomInfo[i];
         if(sInfo && pId !== 'player-south') pUI.querySelector('.name').innerText = sInfo.name;
         
-        if(i === currentTurnIdx && (gState === 'PLAYING' || gState === 'DRAWING' || gState === 'BURYING')) pUI.classList.add('active-turn');
+        if(i === currentTurnIdx && (gState === 'PLAYING' || gState === 'DRAWING' || gState === 'BURYING_TAKE' || gState === 'BURYING_ACTION')) pUI.classList.add('active-turn');
         else { pUI.classList.remove('active-turn'); pUI.querySelector('.timer-badge').innerText = '0'; }
     }
 }
 
 socket.on('roomStateSync', d => { 
-    roomInfo = d.seats; document.getElementById('spec-count').innerText = d.spectatorsCount; updateAvatarUI();
+    roomInfo = d.seats; document.getElementById('spec-count').innerText = d.spectatorsCount; 
+    
+    // ！！核心修复：大厅空座终于可以刷新了！！
+    for(let i=0; i<4; i++) {
+        let seatUI = document.getElementById(`seat-${i}`);
+        if (d.seats[i]) {
+            let s = d.seats[i];
+            seatUI.innerHTML = s.isOwner ? `👑 ${s.name}` : (s.isReady ? `✅ ${s.name}` : `⏳ ${s.name}`);
+            seatUI.className = 'seat' + (s.isOwner ? ' owner' : '') + (s.isReady ? ' ready' : '');
+        } else {
+            seatUI.innerHTML = '空座'; seatUI.className = 'seat';
+        }
+    }
+
+    updateAvatarUI();
     if(amIOwner) {
         let seatedCount = 0, readyCount = 0;
         d.seats.forEach(s => { if(s){ seatedCount++; if(s.isReady || s.isOwner) readyCount++; }});
@@ -165,10 +184,9 @@ socket.on('gameStateSync', d => {
     document.getElementById('team2-wins').innerText=d.match.team2Wins;
     document.getElementById('main-suit-icon').innerText=mainS;
     document.getElementById('score').innerText=d.score;
-    let stageStr = d.onStage.length > 0 ? d.onStage.map(i=>roomInfo[i]?roomInfo[i].name:"?").join(', ') : "等待抓天命牌";
+    let stageStr = d.onStage.length > 0 ? d.onStage.map(i=>roomInfo[i]?roomInfo[i].name:"?").join(', ') : "迷雾中(等待抓天命牌)";
     document.getElementById('on-stage-players').innerText = stageStr;
     
-    // 同步手牌数量
     if(d.cardCounts) {
         for(let i=0; i<4; i++) {
             let diff = amISpectator ? i : (i - myIdx + 4) % 4;
@@ -217,8 +235,10 @@ socket.on('showPub', c => {
 });
 socket.on('clearPub', () => dom.pubArea.innerHTML='');
 
+socket.on('recvBottom', c => { myHand.push(...c); renderHand(); });
+
 socket.on('turnUpd', t => { currentTurnIdx = t; updateAvatarUI(); updateUI(); });
-socket.on('takeBottomSig', t => { currentTurnIdx = t; updateAvatarUI(); if(!amISpectator && t===myIdx){ gState = 'BURYING'; dom.btns.take.style.display='inline-block'; } });
+socket.on('takeBottomSig', t => { currentTurnIdx = t; updateAvatarUI(); updateUI(); });
 
 socket.on('playerPlayed', d => {
     if(trickClient.length===4) trickClient=[]; 
