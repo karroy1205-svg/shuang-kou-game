@@ -43,7 +43,6 @@ function getW(c) {
 
 function updateUI() {
     let isMe = (currentTurnIdx === myIdx) && !amISpectator;
-    // 强制净化所有操作按钮
     Object.values(dom.btns).forEach(btn => btn.style.display = 'none');
 
     if (gState === 'DRAWING' || gState === 'POST_DRAW') {
@@ -85,20 +84,19 @@ dom.hlBtn.onclick = () => { isTrumpOn = !isTrumpOn; dom.hlBtn.innerText = isTrum
 dom.readyBtn.onclick = () => { socket.emit('toggleReady'); dom.readyBtn.classList.toggle('active'); dom.readyBtn.innerText = dom.readyBtn.classList.contains('active')?"已准备":"点我准备"; };
 dom.startBtn.onclick = () => { socket.emit('startGame', { len: document.getElementById('match-length').value, reset: document.getElementById('reset-match-chk').checked }); };
 
-// 局终结算确认
-document.getElementById('confirm-settlement-btn').onclick = () => {
-    socket.emit('ackSettlement');
-    document.getElementById('confirm-settlement-btn').style.display = 'none';
-    document.getElementById('settlement-wait-msg').style.display = 'block';
-};
-
 dom.btns.draw.onclick = () => { socket.emit('reqDraw'); };
 dom.btns.call.onclick = () => { socket.emit('callTrump', myHand.find(c=>c.value==='3').suit); };
 dom.btns.over.onclick = () => { socket.emit('overrideTrump', dom.btns.over.dataset.suit); };
 dom.btns.want.onclick = () => { socket.emit('toggleWant'); };
 dom.btns.take.onclick = () => { socket.emit('takeBottomAck'); };
 
-// 进贡交互按钮
+// 确认结算按钮
+document.getElementById('confirm-settlement-btn').onclick = () => {
+    socket.emit('ackSettlement');
+    document.getElementById('confirm-settlement-btn').style.display = 'none';
+    document.getElementById('settlement-wait-msg').style.display = 'block';
+};
+
 dom.btns.payT.onclick = () => {
     let sels = document.querySelectorAll('.selected'); if(sels.length!==1)return alert("请选1张最大的主牌进贡");
     let card = myHand[parseInt(sels[0].dataset.index)];
@@ -210,7 +208,6 @@ socket.on('roomStateSync', d => {
 socket.on('hideLobby', () => { dom.lobby.style.display = 'none'; });
 socket.on('showLobbyFallback', () => { dom.lobby.style.display = 'flex'; dom.readyBtn.classList.remove('active'); dom.readyBtn.innerText="点我准备"; });
 
-// 激活结算弹窗
 socket.on('showSettlement', html => {
     dom.settlement.style.display = 'flex';
     document.getElementById('settlement-details').innerHTML = html;
@@ -219,7 +216,6 @@ socket.on('showSettlement', html => {
 });
 socket.on('hideSettlement', () => { dom.settlement.style.display = 'none'; });
 
-// 激活进贡按键
 socket.on('startTributePhase', d => {
     if (d.phase === 'PAY' && d.payers.includes(myIdx) && !amISpectator) dom.btns.payT.style.display = 'inline-block';
     if (d.phase === 'RETURN' && d.receivers.includes(myIdx) && !amISpectator) dom.btns.retT.style.display = 'inline-block';
@@ -228,6 +224,11 @@ socket.on('startTributePhase', d => {
 socket.on('gameStateSync', d => {
     gState=d.state; mainS=d.mainSuit; isFirstG=d.isFirstGame; onStagePlayers=d.onStage;
     document.getElementById('current-game').innerText=d.match.currentGame;
+    
+    // 【更新队友显示】直接贴上真实玩家姓名
+    if(d.t1Names) document.getElementById('team1-name').innerText = d.t1Names;
+    if(d.t2Names) document.getElementById('team2-name').innerText = d.t2Names;
+    
     document.getElementById('team1-wins').innerText=d.match.team1Wins;
     document.getElementById('team2-wins').innerText=d.match.team2Wins;
     document.getElementById('main-suit-icon').innerText=mainS; document.getElementById('score').innerText=d.score;
