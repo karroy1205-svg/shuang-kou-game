@@ -14,14 +14,19 @@ let roomOwnerId = null;
 
 let matchConfig = { totalGames: 5, currentGame: 0, team1Wins: 0, team2Wins: 0 };
 let teamOnStage = []; 
+// 新增状态：SETTLEMENT, TRIBUTE_PAY, TRIBUTE_RETURN
 let gameState = 'LOBBY'; 
 let deck = [], bottomCards = [], hands = [[], [], [], []];
 let currentMainSuit = '?', isTrumpOverridden = false;
 let currentTurnIndex = 0, drawCount = 0;
 let currentTrick = [], offStageScore = 0, tricksPlayed = 0;
-let wantStatus = { p1: null, p2: null }; 
+let wantStatus = [false, false, false, false]; 
 let turnTimer = null;
 let targetCard = null; 
+
+// 进贡管理系统
+let tributeConfig = { needsTribute: 0, payers: [], receivers: [], paidCards: [], returnedCount: 0 }; 
+let settlementAcks = [];
 
 const baseNicknames = ["海淀赌神", "朝阳群众", "双扣狂魔", "摸鱼达人", "绝命毒师", "天选之子", "键盘刺客", "西二旗卷王"];
 
@@ -32,7 +37,6 @@ function startTimer(sec, cb) {
     turnTimer = setTimeout(cb, sec * 1000);
 }
 
-// 【新增】统一的倒计时/托管派发中心
 function promptPlay(pIdx) {
     currentTurnIndex = pIdx;
     io.emit('turnUpd', pIdx);
@@ -87,9 +91,7 @@ function getAbsW(card) {
 
 function autoPlay(pIndex) {
     let seat = seats[pIndex];
-    if (!seat || !seat.isOffline) {
-        emitSys(`⏳ [${seat ? seat.nickname : '玩家'}] 出牌超时，系统强制代打！`);
-    }
+    if (!seat || !seat.isOffline) emitSys(`⏳ [${seat ? seat.nickname : '玩家'}] 出牌超时，强制代打！`);
     
     let hand = hands[pIndex];
     if(!hand || hand.length === 0) return;
@@ -159,7 +161,8 @@ function executeDraw(pIndex) {
 function startNewGame() {
     matchConfig.currentGame++; offStageScore = 0; tricksPlayed = 0; drawCount = 0;
     currentMainSuit = '?'; isTrumpOverridden = false; currentTrick = []; targetCard = null;
-    wantStatus = { p1: null, p2: null }; hands = [[],[],[],[]];
+    wantStatus = [false, false, false, false]; settlementAcks = []; hands = [[],[],[],[]];
+    tributeConfig = { needsTribute: 0, payers: [], receivers: [], paidCards: [], returnedCount: 0 };
     deck = [];
     const suits = ['♠', '♥', '♣', '♦'], values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
     for (let i = 0; i < 2; i++) {
@@ -181,7 +184,7 @@ function startNewGame() {
     }
     
     gameState = 'DRAWING';
-    io.emit('hideLobby'); broadcastGameState(); triggerNextDraw();
+    io.emit('hideLobby'); io.emit('hideSettlement'); broadcastGameState(); triggerNextDraw();
 }
 
 function triggerNextDraw() {
@@ -218,23 +221,95 @@ function triggerNextDraw() {
 
 function startNegotiation() {
     gameState = 'NEGOTIATING'; broadcastGameState();
-    emitSys("台上玩家6秒内协商要底牌...");
+    emitSys("台上玩家6秒内点击按钮要底牌(可取消)...");
     startTimer(6, () => {
         let p1 = teamOnStage[0], p2 = teamOnStage[1];
-        if (wantStatus.p1 && !wantStatus.p2) currentTurnIndex = p1;
-        else if (!wantStatus.p1 && wantStatus.p2) currentTurnIndex = p2;
+        if (wantStatus[p1] && !wantStatus[p2]) currentTurnIndex = p1;
+        else if (!wantStatus[p1] && wantStatus[p2]) currentTurnIndex = p2;
         else currentTurnIndex = teamOnStage[Math.floor(Math.random()*2)];
         gameState = 'BURYING_TAKE'; broadcastGameState();
         io.emit('takeBottomSig', currentTurnIndex);
     });
 }
 
+// 扣底后的进贡流转枢纽
+function proceedAfterBury() {
+    if (tributeConfig.needsTribute > 0) {
+        gameState = 'TRIBUTE_PAY'; broadcastGameState();
+        let payerNames = tributeConfig.payers.map(i => seats[i].nickname).join(' 和 ');
+        emitSys(`⚠️ 进贡阶段！请 ${payerNames} 在10秒内选最大主牌进贡！`);
+        io.emit('startTributePhase', { phase: 'PAY', payers: tributeConfig.payers });
+        
+        startTimer(10, () => {
+            // 超时自动进贡最大主牌
+            tributeConfig.payers.forEach((pIdx, arrIdx) => {
+                let pSocket = seats[pIdx];
+                if (pSocket && hands[pIdx].length === 27) {
+                    hands[pIdx].sort((a,b) => getAbsW(b) - getAbsW(a)); // 降序取最大
+                    let paidCard = hands[pIdx].splice(0, 1)[0];
+                    processPaidTribute(pIdx, paidCard);
+                }
+            });
+        });
+    } else {
+        gameState = 'PLAYING'; broadcastGameState(); 
+        promptPlay(currentTurnIndex);
+    }
+}
+
+function processPaidTribute(pIdx, card) {
+    let tIdx = tributeConfig.payers.indexOf(pIdx);
+    if (tIdx !== -1 && tributeConfig.paidCards.length <= tIdx) {
+        let receiverIdx = tributeConfig.receivers[tIdx];
+        tributeConfig.paidCards.push({ from: pIdx, to: receiverIdx, card: card });
+        emitSys(`[${seats[pIdx].nickname}] 进贡了 ${card.suit}${card.value}`);
+        io.to(seats[pIdx].id).emit('initHand', hands[pIdx]);
+        
+        if (tributeConfig.paidCards.length === 2) {
+            // 发放给收供者
+            tributeConfig.paidCards.forEach(p => hands[p.to].push(p.card));
+            tributeConfig.receivers.forEach(r => io.to(seats[r].id).emit('initHand', hands[r]));
+            
+            clearTimeout(turnTimer);
+            gameState = 'TRIBUTE_RETURN'; broadcastGameState();
+            emitSys(`✅ 进贡完成！请收供者在20秒内选最小牌还供！`);
+            io.emit('startTributePhase', { phase: 'RETURN', receivers: tributeConfig.receivers });
+            
+            startTimer(20, () => {
+                tributeConfig.receivers.forEach((rIdx, arrIdx) => {
+                    if (hands[rIdx].length === 28) {
+                        hands[rIdx].sort((a,b) => getAbsW(a) - getAbsW(b)); // 升序取最小
+                        let retCard = hands[rIdx].splice(0, 1)[0];
+                        processReturnedTribute(rIdx, retCard);
+                    }
+                });
+            });
+        }
+    }
+}
+
+function processReturnedTribute(rIdx, card) {
+    let tIdx = tributeConfig.receivers.indexOf(rIdx);
+    if (tIdx !== -1) {
+        let payerIdx = tributeConfig.payers[tIdx];
+        hands[payerIdx].push(card);
+        tributeConfig.returnedCount++;
+        emitSys(`[${seats[rIdx].nickname}] 还供了 ${card.suit}${card.value}`);
+        io.to(seats[rIdx].id).emit('initHand', hands[rIdx]);
+        io.to(seats[payerIdx].id).emit('initHand', hands[payerIdx]);
+
+        if (tributeConfig.returnedCount === 2) {
+            clearTimeout(turnTimer);
+            emitSys(`🎉 还供完毕！出牌阶段开始！`);
+            gameState = 'PLAYING'; broadcastGameState();
+            promptPlay(currentTurnIndex);
+        }
+    }
+}
+
 function handlePlayCards(pIndex, cards) {
     clearTimeout(turnTimer); 
-    
-    if (tricksPlayed === 0 && currentTrick.length === 0) {
-        io.emit('clearPub');
-    }
+    if (tricksPlayed === 0 && currentTrick.length === 0) io.emit('clearPub');
 
     currentTrick.push({ idx: pIndex, cards });
     broadcastGameState(); 
@@ -245,29 +320,69 @@ function handlePlayCards(pIndex, cards) {
         let leadCards = currentTrick[0].cards;
         let leadSuit = getEffectiveSuit(leadCards[0]);
         let isLeadPair = leadCards.length === 2 && leadCards[0].value === leadCards[1].value && leadCards[0].suit === leadCards[1].suit;
-        
         let hiW = -1, winIdx = -1, pts = 0;
         
         currentTrick.forEach(p => {
             pts += p.cards.reduce((sum, c) => sum + (c.value === '5' ? 5 : (['10','K'].includes(c.value) ? 10 : 0)), 0);
             let isPair = p.cards.length === 2 && p.cards[0].value === p.cards[1].value && p.cards[0].suit === p.cards[1].suit;
             let w = -1;
-            
             if (leadCards.length === 1 && p.cards.length === 1) w = getW(p.cards[0], leadSuit);
             else if (isLeadPair && isPair) w = getW(p.cards[0], leadSuit);
-            
             if (w > hiW) { hiW = w; winIdx = p.idx; }
         });
         
         if (!teamOnStage.includes(winIdx)) { offStageScore += pts; broadcastGameState(); }
         
+        // ========================== 核心：多维胜利判定引擎 ==========================
         if (tricksPlayed === 25) {
-            if (!teamOnStage.includes(winIdx)) offStageScore += bottomCards.reduce((sum, c) => sum + (c.value === '5' ? 5 : (['10','K'].includes(c.value) ? 10 : 0)), 0);
-            broadcastGameState();
-            let winTeam1 = (offStageScore < 80);
-            if (teamOnStage.includes(0)) { if(winTeam1) matchConfig.team1Wins++; else { matchConfig.team2Wins++; teamOnStage=[1,3]; } }
-            else { if(!winTeam1) matchConfig.team2Wins++; else { matchConfig.team1Wins++; teamOnStage=[0,2]; } }
+            let offStageTeam = [0,1,2,3].filter(i => !teamOnStage.includes(i));
+            let offStageWonLast = !teamOnStage.includes(winIdx);
             
+            // 抠底加分
+            if (offStageWonLast) offStageScore += bottomCards.reduce((sum, c) => sum + (c.value === '5' ? 5 : (['10','K'].includes(c.value) ? 10 : 0)), 0);
+            
+            // 默认按分数排布
+            let nextOnStage = teamOnStage;
+            let willTribute = 1; // 1: 台下进贡给台上, 2: 台上进贡给台下, 0: 不进贡
+
+            if (offStageScore >= 120) { nextOnStage = offStageTeam; willTribute = 2; }
+            else if (offStageScore >= 80) { nextOnStage = offStageTeam; willTribute = 0; }
+            else if (offStageScore >= 20) { nextOnStage = teamOnStage; willTribute = 0; }
+            else { nextOnStage = teamOnStage; willTribute = 1; }
+
+            // 抠底绝杀特判 (覆盖分数逻辑)
+            let isLastPair = currentTrick.find(t => t.idx === winIdx).cards.length === 2;
+            let kouDiMsg = "";
+            if (offStageWonLast) {
+                if (isLastPair) {
+                    kouDiMsg = "💥 最后一击【双Q抠底】！台下组强制上台且吃供！";
+                    nextOnStage = offStageTeam; willTribute = 2;
+                } else {
+                    kouDiMsg = "💥 最后一击【单张抠底】！台下组强制上台！";
+                    nextOnStage = offStageTeam; 
+                    if(willTribute === 1) willTribute = 0; // 单抠免供
+                }
+            }
+
+            // 更新局制大比分
+            if (nextOnStage.includes(0)) matchConfig.team1Wins++; else matchConfig.team2Wins++;
+
+            // 设置下局进贡参数
+            tributeConfig.needsTribute = willTribute;
+            if (willTribute === 1) { tributeConfig.payers = offStageTeam; tributeConfig.receivers = teamOnStage; }
+            else if (willTribute === 2) { tributeConfig.payers = teamOnStage; tributeConfig.receivers = offStageTeam; }
+            
+            teamOnStage = nextOnStage; // 正式交接王权
+            broadcastGameState();
+
+            let stageStr = teamOnStage.map(i=>seats[i]?seats[i].nickname:"").join(', ');
+            let settleHTML = `
+                <div style="font-size:18px; margin-bottom:10px;">${kouDiMsg}</div>
+                🔥 最终台下得分：<b style="color:#e74c3c; font-size:24px;">${offStageScore}</b> 分<br>
+                🛡️ 下局庄家阵营：<b style="color:#f1c40f;">${stageStr}</b><br>
+                🎁 下局是否进贡：<b style="color:#3498db;">${willTribute===0?'免供':(willTribute===1?'台下进贡':'台上进贡')}</b>
+            `;
+
             if (matchConfig.currentGame >= matchConfig.totalGames) {
                 emitSys(`🏆 比赛结束！总胜场: [队1] ${matchConfig.team1Wins} - ${matchConfig.team2Wins} [队2]`);
                 setTimeout(() => {
@@ -276,8 +391,8 @@ function handlePlayCards(pIndex, cards) {
                     io.emit('showLobbyFallback'); broadcastRoomState();
                 }, 8000);
             } else {
-                emitSys(`局终！台下得分：${offStageScore}。8秒后下一局...`);
-                setTimeout(startNewGame, 8000);
+                gameState = 'SETTLEMENT'; clearTimeout(turnTimer);
+                io.emit('showSettlement', settleHTML);
             }
             return;
         }
@@ -298,7 +413,6 @@ io.on('connection', (socket) => {
     socket.ip = clientIp;
 
     let existingOfflineSeatIdx = seats.findIndex(s => s !== null && s.ip === clientIp && s.isOffline);
-
     if (existingOfflineSeatIdx !== -1 && gameState !== 'LOBBY') {
         socket.seatIndex = existingOfflineSeatIdx;
         socket.baseName = seats[existingOfflineSeatIdx].baseName;
@@ -309,17 +423,11 @@ io.on('connection', (socket) => {
 
         io.to(socket.id).emit('seatAssigned', { seatIndex: socket.seatIndex, nickname: socket.nickname, isOwner: socket.isOwner });
         io.to(socket.id).emit('initHand', hands[socket.seatIndex]);
-        
-        // 【核心修复】强制下发隐藏大厅指令
         io.to(socket.id).emit('hideLobby'); 
         emitSys(`🔄 [${socket.nickname}] 重新连接，恢复对局！`);
-        broadcastRoomState();
-        broadcastGameState();
+        broadcastRoomState(); broadcastGameState();
         
-        // 【核心修复】如果刚好轮到他出牌，瞬间剥夺托管2秒倒计时，重置给回活人 30秒！
-        if (gameState === 'PLAYING' && currentTurnIndex === socket.seatIndex) {
-            promptPlay(socket.seatIndex);
-        }
+        if (gameState === 'PLAYING' && currentTurnIndex === socket.seatIndex) promptPlay(socket.seatIndex);
     } else {
         socket.baseName = baseNicknames[Math.floor(Math.random() * baseNicknames.length)];
         socket.nickname = socket.baseName; 
@@ -344,10 +452,13 @@ io.on('connection', (socket) => {
                 let seat = seats[socket.seatIndex];
                 if(seat) seat.isOffline = true;
                 emitSys(`⚠️ [${socket.nickname}] 掉线，已交由系统托管。等待重连...`);
-                
-                // 【核心修复】如果在活人的 30秒回合期间意外掉线，立即接管并切入 2秒倒计时！
-                if (gameState === 'PLAYING' && currentTurnIndex === socket.seatIndex) {
-                    promptPlay(socket.seatIndex);
+                if (gameState === 'PLAYING' && currentTurnIndex === socket.seatIndex) promptPlay(socket.seatIndex);
+                if (gameState === 'SETTLEMENT') {
+                    // 如果离线，自动帮他点确认结算，防止游戏卡死
+                    if (!settlementAcks.includes(socket.seatIndex)) {
+                        settlementAcks.push(socket.seatIndex);
+                        if (settlementAcks.length === 4) startNewGame();
+                    }
                 }
             } else {
                 seats[socket.seatIndex] = null; emitSys(`[${socket.nickname}] 退出`);
@@ -375,10 +486,8 @@ io.on('connection', (socket) => {
             let targetSocket = seats.find(s => s && s.id === targetId);
             if (targetSocket) {
                 socket.isOwner = false; targetSocket.isOwner = true; roomOwnerId = targetSocket.id;
-                io.to(socket.id).emit('ownerChanged', false);
-                io.to(targetSocket.id).emit('ownerChanged', true);
-                emitSys(`👑 房主权限已移交给 [${targetSocket.nickname}]`);
-                broadcastRoomState();
+                io.to(socket.id).emit('ownerChanged', false); io.to(targetSocket.id).emit('ownerChanged', true);
+                emitSys(`👑 房主权限已移交给 [${targetSocket.nickname}]`); broadcastRoomState();
             }
         }
     });
@@ -389,18 +498,31 @@ io.on('connection', (socket) => {
             let readyCount = seats.filter(s => s !== null && (s.isReady || s.isOwner || s.isOffline)).length;
             if (seats.filter(s => s !== null).length === 4 && readyCount === 4) { 
                 matchConfig.totalGames = parseInt(config.len); 
-                if (config.reset) {
-                    matchConfig.currentGame = 0; matchConfig.team1Wins = 0; matchConfig.team2Wins = 0; offStageScore = 0;
-                }
+                if (config.reset) { matchConfig.currentGame = 0; matchConfig.team1Wins = 0; matchConfig.team2Wins = 0; offStageScore = 0; }
                 startNewGame(); 
             } 
+        }
+    });
+
+    // 结算确认接口
+    socket.on('ackSettlement', () => {
+        if (!settlementAcks.includes(socket.seatIndex)) {
+            settlementAcks.push(socket.seatIndex);
+            if (settlementAcks.length === 4) startNewGame();
         }
     });
 
     socket.on('reqDraw', () => { if (socket.seatIndex === currentTurnIndex) executeDraw(socket.seatIndex); });
     socket.on('callTrump', (s) => { if(currentMainSuit==='?' && matchConfig.currentGame > 1){ currentMainSuit=s; broadcastGameState(); emitSys(`[${socket.nickname}]亮3定主[${s}]`); }});
     socket.on('overrideTrump', (s) => { if(!isTrumpOverridden && matchConfig.currentGame > 1){ currentMainSuit=s; isTrumpOverridden=true; broadcastGameState(); emitSys(`🔥 [${socket.nickname}]双3反主[${s}]！`); }});
-    socket.on('toggleWant', (w) => { if(socket.seatIndex===teamOnStage[0]) wantStatus.p1=w; if(socket.seatIndex===teamOnStage[1]) wantStatus.p2=w; });
+    
+    // 改良的底牌要/取消 Toggle 逻辑
+    socket.on('toggleWant', () => { 
+        if(teamOnStage.includes(socket.seatIndex) && gameState === 'NEGOTIATING') {
+            wantStatus[socket.seatIndex] = !wantStatus[socket.seatIndex];
+            io.to(socket.id).emit('wantStatusSync', wantStatus[socket.seatIndex]);
+        }
+    });
     
     socket.on('takeBottomAck', () => { 
         hands[socket.seatIndex].push(...bottomCards);
@@ -410,16 +532,12 @@ io.on('connection', (socket) => {
         
         emitSys("庄家正在选牌扣底 (限时45秒)..."); 
         startTimer(45, () => {
-            let sHand = hands[socket.seatIndex]; 
-            sHand.sort((a,b) => getAbsW(a) - getAbsW(b));
-            
+            let sHand = hands[socket.seatIndex]; sHand.sort((a,b) => getAbsW(a) - getAbsW(b));
             bottomCards = sHand.splice(0, 8); 
             io.emit('showPub', bottomCards); 
             emitSys(`⏳ 扣底超时，系统自动为您代扣8张最小牌！`);
             io.to(socket.id).emit('initHand', sHand); 
-            
-            gameState = 'PLAYING'; broadcastGameState(); 
-            promptPlay(currentTurnIndex);
+            proceedAfterBury(); // 切入进贡枢纽
         }); 
     });
     
@@ -427,23 +545,36 @@ io.on('connection', (socket) => {
         clearTimeout(turnTimer); 
         let sHand = hands[socket.seatIndex];
         let newBottom = [];
-        
         cards.buried.forEach(bc => {
             let idx = sHand.findIndex(c => c.suit === bc.suit && c.value === bc.value);
             if (idx !== -1) newBottom.push(sHand.splice(idx, 1)[0]);
         });
         bottomCards = newBottom; 
-        
         io.emit('showPub', bottomCards); 
-        emitSys("扣底完成，展示直至庄家出牌...");
-        
-        gameState = 'PLAYING'; broadcastGameState(); 
-        promptPlay(currentTurnIndex);
+        emitSys("扣底完成，展示直至第一张牌打出...");
+        proceedAfterBury(); // 切入进贡枢纽
+    });
+
+    // 进贡动作处理
+    socket.on('payTribute', c => {
+        if(gameState === 'TRIBUTE_PAY' && tributeConfig.payers.includes(socket.seatIndex)) {
+            let sHand = hands[socket.seatIndex];
+            let idx = sHand.findIndex(hc => hc.suit === c.suit && hc.value === c.value);
+            if(idx !== -1) processPaidTribute(socket.seatIndex, sHand.splice(idx, 1)[0]);
+        }
+    });
+
+    // 还供动作处理
+    socket.on('returnTribute', c => {
+        if(gameState === 'TRIBUTE_RETURN' && tributeConfig.receivers.includes(socket.seatIndex)) {
+            let sHand = hands[socket.seatIndex];
+            let idx = sHand.findIndex(hc => hc.suit === c.suit && hc.value === c.value);
+            if(idx !== -1) processReturnedTribute(socket.seatIndex, sHand.splice(idx, 1)[0]);
+        }
     });
 
     socket.on('playCards', (cards) => { 
-        let sHand = hands[socket.seatIndex];
-        let actualPlayed = [];
+        let sHand = hands[socket.seatIndex]; let actualPlayed = [];
         cards.played.forEach(pc => {
             let idx = sHand.findIndex(c => c.suit === pc.suit && c.value === pc.value);
             if(idx !== -1) actualPlayed.push(sHand.splice(idx, 1)[0]);
