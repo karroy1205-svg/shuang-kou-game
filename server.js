@@ -57,7 +57,6 @@ function broadcastRoomState() {
 
 function broadcastGameState() {
     let cardCounts = hands.map(h => h ? h.length : 0);
-    // 生成非常清晰的队伍名单：一三号位组队，二四号位组队
     let t1Names = `[${seats[0]?seats[0].nickname:"空座"} & ${seats[2]?seats[2].nickname:"空座"}]`;
     let t2Names = `[${seats[1]?seats[1].nickname:"空座"} & ${seats[3]?seats[3].nickname:"空座"}]`;
     
@@ -348,14 +347,13 @@ function handlePlayCards(pIndex, cards) {
                 let offStageWonLast = !teamOnStage.includes(winIdx);
                 let isLastPair = currentTrick.find(t => t.idx === winIdx).cards.length === 2;
                 
-                // 【修复：废除翻倍，回归纯正扣底加分】只加原始 5/10/K 的分数
                 if (offStageWonLast) {
                     let bottomPts = bottomCards.reduce((sum, c) => sum + (c.value === '5' ? 5 : (['10','K'].includes(c.value) ? 10 : 0)), 0);
                     offStageScore += bottomPts;
                 }
                 
                 let nextOnStage = teamOnStage;
-                let willTribute = 1; // 1: 台下进贡, 2: 台上进贡, 0: 免供
+                let willTribute = 1; 
 
                 if (offStageScore >= 120) { nextOnStage = offStageTeam; willTribute = 2; }
                 else if (offStageScore >= 80) { nextOnStage = offStageTeam; willTribute = 0; }
@@ -370,7 +368,7 @@ function handlePlayCards(pIndex, cards) {
                     } else {
                         kouDiMsg = "💥 最后一击【单张抠底】！台下组强制上台！";
                         nextOnStage = offStageTeam; 
-                        if(willTribute === 1) willTribute = 0; // 成功上台，直接免去因为分数低要进贡的惩罚
+                        if(willTribute === 1) willTribute = 0; 
                     }
                 }
 
@@ -399,7 +397,6 @@ function handlePlayCards(pIndex, cards) {
                         io.emit('showLobbyFallback'); broadcastRoomState();
                     }, 8000);
                 } else {
-                    // 【核心修复防卡死：自动帮托管掉线的人点确认！】
                     gameState = 'SETTLEMENT'; clearTimeout(turnTimer);
                     settlementAcks = [];
                     seats.forEach((s, idx) => {
@@ -407,7 +404,7 @@ function handlePlayCards(pIndex, cards) {
                     });
                     
                     if (settlementAcks.length >= 4) {
-                        startNewGame(); // 万一全掉线了，直接开
+                        startNewGame(); 
                     } else {
                         io.emit('showSettlement', settleHTML);
                     }
@@ -590,13 +587,6 @@ io.on('connection', (socket) => {
     });
 
     socket.on('playCards', (cards) => { 
-    // 【新增：聊天与弹幕广播】
-    socket.on('chatMessage', (msg) => {
-        if (typeof msg === 'string' && msg.trim().length > 0) {
-            let safeMsg = msg.substring(0, 50); // 限制50个字符防恶意刷屏
-            io.emit('chatMessage', { sender: socket.nickname, text: safeMsg });
-        }
-    });
         let sHand = hands[socket.seatIndex]; let actualPlayed = [];
         cards.played.forEach(pc => {
             let idx = sHand.findIndex(c => c.suit === pc.suit && c.value === pc.value);
@@ -605,6 +595,19 @@ io.on('connection', (socket) => {
         handlePlayCards(socket.seatIndex, actualPlayed); 
         io.to(socket.id).emit('initHand', sHand);
     });
+
+    // ============================================
+    // 【核心修复】：在这里挂载聊天室与弹幕广播通道！
+    // ============================================
+    socket.on('chatMessage', (msg) => {
+        if (typeof msg === 'string' && msg.trim().length > 0) {
+            // 限制最多发送50个字符，防止恶意刷屏撑爆页面
+            let safeMsg = msg.substring(0, 50); 
+            // 将包含发送者名字和文本的完整包裹发射给全房间
+            io.emit('chatMessage', { sender: socket.nickname, text: safeMsg });
+        }
+    });
+
 });
 
 const PORT = process.env.PORT || 3000;
