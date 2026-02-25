@@ -3,34 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>硬核山东双扣 - 商业版 V2.0</title>
-    <link rel="stylesheet" href="style.css?v=2.0">
+    <title>硬核山东双扣 - 在线大厅版</title>
+    <link rel="stylesheet" href="style.css?v=3.0">
 </head>
 <body>
     <div id="lobby-screen">
         <div class="lobby-box">
-            <h2>创建双扣房间</h2>
-            <select id="match-length">
-                <option value="5">5 局制 (抢先赢3局)</option>
-                <option value="10">10 局制 (抢先赢6局)</option>
-                <option value="15">15 局制 (抢先赢8局)</option>
-            </select>
-            <button id="start-match-btn" style="display:none;">开始对局</button>
-            <p id="lobby-status">等待玩家加入... (0/4)</p>
+            <h2>双扣在线大厅</h2>
+            <div id="my-identity" style="color:#f1c40f; font-weight:bold; margin-bottom:15px;">连接中...</div>
+            
+            <div class="seat-container">
+                <div class="seat" id="seat-0">空座</div>
+                <div class="seat" id="seat-1">空座</div>
+                <div class="seat" id="seat-2">空座</div>
+                <div class="seat" id="seat-3">空座</div>
+            </div>
+
+            <div id="owner-panel" style="display:none; margin-top: 20px;">
+                <select id="match-length">
+                    <option value="5">5 局制 (抢先赢3局)</option>
+                    <option value="10">10 局制 (抢先赢6局)</option>
+                </select>
+                <button id="start-btn" disabled>等待全员准备...</button>
+            </div>
+            
+            <div id="player-panel" style="display:none; margin-top: 20px;">
+                <button id="ready-btn">点我准备</button>
+            </div>
+
+            <div id="spectator-panel" style="display:none; margin-top: 20px; color:#e74c3c;">
+                座位已满，您处于观众模式 🍿 <br>
+                <span style="font-size:14px; color:#ccc;">(当前观众人数: <span id="spec-count">0</span>)</span>
+            </div>
         </div>
     </div>
 
     <div id="scoreboard">
-        <div class="match-info">当前: 第 <span id="current-game">1</span> 局 | 🏆 胜场: [队伍1] <span id="team1-wins">0</span> - <span id="team2-wins">0</span> [队伍2]</div>
+        <div class="match-info">当前: 第 <span id="current-game">0</span> 局 | 🏆 胜场: [队伍1] <span id="team1-wins">0</span> - <span id="team2-wins">0</span> [队伍2]</div>
         <div class="main-suit-display">主花色: <span id="main-suit-icon">?</span></div>
-        <div class="team-info">🛡️ 台上: <span id="on-stage-players">...</span></div>
         <div class="team-info highlight">⚔️ 台下得分: <span id="score">0</span></div>
     </div>
 
     <div id="game-table">
-        <div class="opponent-area pos-north"><div class="opp-info" id="opp-north">🪑 玩家待定<br>🎴 0 张</div></div>
+        <div class="opponent-area pos-north"><div class="opp-info" id="opp-north">🪑 待定<br>🎴 0 张</div></div>
         <div class="table-middle">
-            <div class="opponent-area pos-west"><div class="opp-info" id="opp-west">🪑 玩家待定<br>🎴 0 张</div></div>
+            <div class="opponent-area pos-west"><div class="opp-info" id="opp-west">🪑 待定<br>🎴 0 张</div></div>
             <div id="battle-area">
                 <div class="battle-slot" id="slot-north"></div>
                 <div class="battle-middle-slots">
@@ -40,7 +57,7 @@
                 </div>
                 <div class="battle-slot" id="slot-south"></div>
             </div>
-            <div class="opponent-area pos-east"><div class="opp-info" id="opp-east">🪑 玩家待定<br>🎴 0 张</div></div>
+            <div class="opponent-area pos-east"><div class="opp-info" id="opp-east">🪑 待定<br>🎴 0 张</div></div>
         </div>
     </div>
 
@@ -54,15 +71,10 @@
                 <button id="call-btn" style="display:none; background-color:#9b59b6;">亮3定主</button>
                 <button id="override-btn" style="display:none; background-color:#8e44ad;">双3反主</button>
                 <button id="want-btn" style="display:none; background-color:#2ecc71;">我要底牌</button>
-                
                 <button id="take-bottom-btn" style="display:none; background-color:#27ae60;">拿走底牌</button>
                 <button id="bury-btn" style="display:none; background-color:#c0392b;">确认扣底</button>
                 <button id="play-btn" style="display:none; background-color:#e67e22;">出 牌</button>
             </div>
-        </div>
-        <div class="controls">
-            <label class="toggle-switch"><input type="checkbox" id="trump-toggle"> 主牌高亮</label>
-            <span id="turn-indicator" style="color:#f1c40f; margin-left: 20px;">大厅准备中...</span>
         </div>
         <div id="card-container"></div>
     </div>
