@@ -12,38 +12,49 @@ body { background-color: #1e5f38; color: white; font-family: sans-serif; margin:
 
 #scoreboard { display: flex; justify-content: space-around; background: rgba(0,0,0,0.7); padding: 10px; border-bottom: 2px solid #f1c40f; }
 #game-table { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; }
-#battle-area { width: 600px; height: 320px; border: 2px dashed rgba(255,255,255,0.2); border-radius: 50%; position: relative; }
+#battle-area { width: 550px; height: 280px; border: 2px dashed rgba(255,255,255,0.2); border-radius: 50%; position: relative; }
 
-/* ！！核心：真实的牌桌牌堆 ！！ */
-#deck-area { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; gap: 30px; align-items: center; z-index: 5; }
-.pile { width: 65px; height: 90px; background: #ecf0f1; border-radius: 5px; border: 1px solid #bdc3c7; box-shadow: 2px 2px 0 #95a5a6, 4px 4px 0 #7f8c8d; transition: 0.3s; }
-.target-card-display { width: 65px; height: 90px; background: white; border-radius: 5px; display: flex; flex-direction: column; justify-content: flex-start; align-items: center; font-size: 20px; font-weight: bold; border: 2px solid #f1c40f; box-shadow: 0 0 15px rgba(241,196,15,0.6); color: #333; padding-top: 5px; line-height: 1; }
-.deck-count { position: absolute; bottom: -30px; left: 50%; transform: translateX(-50%); font-weight: bold; color: #f1c40f; white-space: nowrap; font-size: 18px; }
+/* 虚拟头像区 */
+.avatar-box { width: 40px; height: 40px; background: #34495e; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 20px; margin: 0 auto 5px; position: relative; border: 2px solid transparent; transition: 0.3s; }
+.timer-badge { position: absolute; bottom: -5px; right: -10px; background: #e74c3c; color: white; font-size: 12px; font-weight: bold; padding: 2px 5px; border-radius: 10px; display: none; }
+/* ！！核心：当前玩家呼吸灯 ！！ */
+.active-turn .avatar-box { border-color: #f1c40f; box-shadow: 0 0 15px #f1c40f; }
+.active-turn .timer-badge { display: block; }
 
-#public-cards-area { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: grid; grid-template-columns: repeat(4, 65px); gap: 10px; z-index: 10; }
-#public-cards-area .playing-card { width: 65px; height: 90px; margin-left: 0 !important; }
-#public-cards-area .card-corner { font-size: 16px; top: 4px; left: 4px;}
-
-.opponent-area { position: absolute; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 5px; text-align: center; border: 1px solid #555; width: 120px; }
-.pos-north { top: -60px; left: 50%; transform: translateX(-50%); }
+.opponent-area { position: absolute; background: rgba(0,0,0,0.4); padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #555; width: 100px; }
+.pos-north { top: -80px; left: 50%; transform: translateX(-50%); }
 .pos-west { left: -140px; top: 50%; transform: translateY(-50%); }
 .pos-east { right: -140px; top: 50%; transform: translateY(-50%); }
 
-.battle-slot { position: absolute; width: 80px; height: 110px; }
+.my-avatar-box { display: flex; align-items: center; gap: 15px; }
+
+/* ！！核心：修复牌乱飞，出牌槽居中约束 ！！ */
+.battle-slot { position: absolute; display: flex; justify-content: center; align-items: center; width: 120px; height: 100px; }
 #slot-north { top: 10px; left: 50%; transform: translateX(-50%); }
 #slot-south { bottom: 10px; left: 50%; transform: translateX(-50%); }
-#slot-west { left: 40px; top: 50%; transform: translateY(-50%); }
-#slot-east { right: 40px; top: 50%; transform: translateY(-50%); }
+#slot-west { left: 20px; top: 50%; transform: translateY(-50%); }
+#slot-east { right: 20px; top: 50%; transform: translateY(-50%); }
+/* 槽内卡牌约束排版 */
+.battle-slot .playing-card { position: static; transform: scale(0.75); margin-left: -40px; cursor: default; }
+.battle-slot .playing-card:first-child { margin-left: 0; }
 
-#my-area { background: rgba(0,0,0,0.6); padding: 10px 0; }
+#deck-area { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; gap: 20px; align-items: center; z-index: 5; }
+.pile { width: 55px; height: 80px; background: #ecf0f1; border-radius: 5px; border: 1px solid #bdc3c7; }
+.target-card-display { width: 55px; height: 80px; background: white; border-radius: 5px; display: flex; flex-direction: column; align-items: center; font-size: 18px; font-weight: bold; border: 2px solid #f1c40f; box-shadow: 0 0 15px rgba(241,196,15,0.6); color: #333; padding-top: 5px; }
+.deck-count { position: absolute; bottom: -25px; left: 50%; transform: translateX(-50%); font-weight: bold; color: #f1c40f; white-space: nowrap; }
+
+#public-cards-area { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: grid; grid-template-columns: repeat(4, 55px); gap: 10px; z-index: 10; }
+#public-cards-area .playing-card { width: 55px; height: 80px; margin-left: 0 !important; }
+#public-cards-area .card-corner { font-size: 14px; top: 4px; left: 4px;}
+
+#my-area { background: rgba(0,0,0,0.6); padding: 10px 0; border-top: 2px solid #333; }
 .action-bar { display: flex; justify-content: space-between; max-width: 1000px; margin: 0 auto 10px; padding: 0 20px; align-items: center; }
 #sys-broadcast { color: #f39c12; font-weight: bold; font-size: 18px; }
-#timer-display { color: #e74c3c; font-size: 24px; font-weight: bold; }
-#card-container { display: flex; justify-content: center; height: 150px; }
+#card-container { display: flex; justify-content: center; height: 140px; }
 
-.playing-card { width: 90px; height: 130px; background: white; border-radius: 6px; border: 1px solid #ccc; position: relative; cursor: pointer; margin-left: -70px; transition: 0.1s; }
+.playing-card { width: 85px; height: 120px; background: white; border-radius: 6px; border: 1px solid #ccc; position: relative; cursor: pointer; margin-left: -60px; transition: 0.1s; }
 .playing-card:first-child { margin-left: 0; }
-.card-corner { position: absolute; top: 5px; left: 5px; display: flex; flex-direction: column; font-size: 22px; font-weight: bold; line-height: 1; color: #333; }
+.card-corner { position: absolute; top: 5px; left: 5px; display: flex; flex-direction: column; font-size: 20px; font-weight: bold; line-height: 1; color: #333; }
 .playing-card.selected { transform: translateY(-30px); border: 2px solid #d32f2f; }
 .trump-glow { box-shadow: 0 0 15px #f1c40f; border: 2px solid #f1c40f; }
 button { padding: 8px 15px; font-size: 16px; font-weight: bold; border-radius: 5px; cursor: pointer; border: none; color: white; margin-left: 5px; }
