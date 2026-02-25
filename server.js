@@ -26,7 +26,7 @@ let targetCard = null;
 let tributeConfig = { needsTribute: 0, payers: [], receivers: [], paidCards: [], returnedFrom: [] }; 
 let settlementAcks = [];
 
-const baseNicknames = ["海淀赌神", "朝阳群众", "双扣狂魔", "摸鱼达人", "绝命毒师", "天选之子", "键盘刺客", "西二旗卷王"];
+const baseNicknames = ["唐僧", "八戒", "沙师弟", "黛玉", "绝命毒师", "伏地魔", "张三","浦四","梅子酒", "西二旗卷王"];
 
 function emitSys(msg) { io.emit('systemMsg', msg); }
 
