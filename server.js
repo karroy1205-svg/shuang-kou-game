@@ -215,7 +215,7 @@ function triggerNextDraw() {
         return;
     }
     io.emit('turnUpd', currentTurnIndex);
-    startTimer(1, () => { executeDraw(currentTurnIndex); });
+    startTimer(0.5, () => { executeDraw(currentTurnIndex); });
 }
 
 function startNegotiation() {
