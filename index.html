@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>硬核山东双扣 - 在线大厅版</title>
-    <link rel="stylesheet" href="style.css?v=4.0">
+    <title>硬核山东双扣 - 商业正规桌</title>
+    <link rel="stylesheet" href="style.css?v=5.0">
 </head>
 <body>
     <div id="lobby-screen">
@@ -24,7 +24,7 @@
                 <button id="start-btn" disabled>等待全员准备</button>
             </div>
             <div id="player-panel" style="display:none; margin-top: 20px;"><button id="ready-btn">点我准备</button></div>
-            <div id="spectator-panel" style="display:none; margin-top: 20px; color:#e74c3c;">您是观众模式 🍿<br><span style="font-size:14px; color:#ccc;">(人数: <span id="spec-count">0</span>)</span></div>
+            <div id="spectator-panel" style="display:none; margin-top: 20px; color:#e74c3c;">观众模式 🍿 (<span id="spec-count">0</span>)</div>
         </div>
     </div>
 
@@ -36,9 +36,17 @@
     </div>
 
     <div id="game-table">
-        <div class="opponent-area pos-north"><div class="opp-info" id="opp-north">🪑 待定<br>🎴 0 张</div></div>
+        <div class="opponent-area pos-north" id="player-north">
+            <div class="avatar-box">👤 <span class="timer-badge">0</span></div>
+            <div class="opp-info">待定<br>🎴 0 张</div>
+        </div>
+        
         <div class="table-middle">
-            <div class="opponent-area pos-west"><div class="opp-info" id="opp-west">🪑 待定<br>🎴 0 张</div></div>
+            <div class="opponent-area pos-west" id="player-west">
+                <div class="avatar-box">👤 <span class="timer-badge">0</span></div>
+                <div class="opp-info">待定<br>🎴 0 张</div>
+            </div>
+            
             <div id="battle-area">
                 <div class="battle-slot" id="slot-north"></div>
                 <div class="battle-middle-slots">
@@ -56,14 +64,24 @@
                 </div>
                 <div class="battle-slot" id="slot-south"></div>
             </div>
-            <div class="opponent-area pos-east"><div class="opp-info" id="opp-east">🪑 待定<br>🎴 0 张</div></div>
+
+            <div class="opponent-area pos-east" id="player-east">
+                <div class="avatar-box">👤 <span class="timer-badge">0</span></div>
+                <div class="opp-info">待定<br>🎴 0 张</div>
+            </div>
         </div>
     </div>
 
-    <div id="my-area">
+    <div id="my-area" class="opponent-area pos-south" style="position:relative; width:100%; text-align:center; padding:0; background:none; border:none;">
         <div class="action-bar">
-            <div id="sys-broadcast">系统连接中...</div>
-            <div id="timer-display" style="display: none;">⏳ <span id="time-left">0</span>s</div>
+            <div class="my-avatar-box" id="player-south">
+                <div class="avatar-box">👤 <span class="timer-badge">0</span></div>
+                <span id="sys-broadcast">系统连接中...</span>
+            </div>
+            
+            <div class="controls">
+                <button id="highlight-toggle-btn" style="background-color: #f1c40f; color: #333; margin-right:20px;">✨ 开启主牌高亮</button>
+            </div>
             <div class="buttons">
                 <button id="draw-btn" style="display:none; background-color:#3498db;">摸牌</button>
                 <button id="call-btn" style="display:none; background-color:#9b59b6;">亮3定主</button>
