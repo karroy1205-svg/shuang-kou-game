@@ -14,6 +14,9 @@ const dom = {
     btns: { draw: document.getElementById('draw-btn'), call: document.getElementById('call-btn'), over: document.getElementById('override-btn'), want: document.getElementById('want-btn'), take: document.getElementById('take-bottom-btn'), bury: document.getElementById('bury-btn'), play: document.getElementById('play-btn') }
 };
 
+window.kickPlayer = (id) => { if(confirm("确定要踢出该玩家吗？")) socket.emit('kickPlayer', id); };
+window.transferOwner = (id) => { if(confirm("确定要移交房主吗？")) socket.emit('transferOwner', id); };
+
 dom.chatHead.onclick = () => dom.chatWin.classList.toggle('open');
 function addLog(msg) { 
     let li = document.createElement('li'); li.innerText = msg; 
@@ -60,7 +63,6 @@ function renderHand() {
         let isRed = (c.suit==='♥'||c.suit==='♦'||c.value==='大王');
         div.innerHTML = `<div class="card-corner" style="color:${isRed?'#d32f2f':'#333'}"><span>${getVal(c)}</span><span>${c.suit==='Joker'?'王':c.suit}</span></div>`;
         
-        // 【修复】移除 z-index，完全依赖 DOM 流来实现层叠效果（右压左）
         div.onclick = () => { 
             if(!amISpectator && (gState === 'BURYING_ACTION' || gState === 'PLAYING')) { 
                 div.classList.toggle('selected'); 
@@ -73,7 +75,15 @@ function renderHand() {
 
 dom.hlBtn.onclick = () => { isTrumpOn = !isTrumpOn; dom.hlBtn.innerText = isTrumpOn?"取消高亮":"✨ 主牌高亮"; renderHand(); };
 dom.readyBtn.onclick = () => { socket.emit('toggleReady'); dom.readyBtn.classList.toggle('active'); dom.readyBtn.innerText = dom.readyBtn.classList.contains('active')?"已准备":"点我准备"; };
-dom.startBtn.onclick = () => { socket.emit('startGame', document.getElementById('match-length').value); };
+
+// 发送带配置的 startGame 指令
+dom.startBtn.onclick = () => { 
+    socket.emit('startGame', { 
+        len: document.getElementById('match-length').value, 
+        reset: document.getElementById('reset-match-chk').checked 
+    }); 
+};
+
 dom.btns.draw.onclick = () => { socket.emit('reqDraw'); dom.btns.draw.style.display='none'; };
 dom.btns.call.onclick = () => { socket.emit('callTrump', myHand.find(c=>c.value==='3').suit); dom.btns.call.style.display='none';};
 dom.btns.over.onclick = () => { socket.emit('overrideTrump', dom.btns.over.dataset.suit); dom.btns.over.style.display='none';};
@@ -94,7 +104,6 @@ dom.btns.play.onclick = () => {
     let ids = Array.from(sels).map(n=>parseInt(n.dataset.index)).sort((a,b)=>b-a);
     let cards = ids.map(idx => myHand[idx]); 
     
-    // 【修复】重构跟牌与首发判定逻辑，放宽垫牌限制
     if(trickClient.length === 0) {
         if(cards.length > 2) return alert("首发出牌单次仅允许单张或对子！");
         if(cards.length === 2 && (cards[0].value !== cards[1].value || cards[0].suit !== cards[1].suit)) return alert("首发两张牌必须是绝对同花色对子！");
@@ -121,7 +130,6 @@ dom.btns.play.onclick = () => {
                 let playedLeadCount = cards.filter(c => getEffSuit(c) === leadSuit).length;
                 if (leadSuitHand.length >= 2 && playedLeadCount < 2) return alert(`必须尽量跟出2张【${leadSuit==='trump'?'主牌':leadSuit}】！`);
                 if (leadSuitHand.length === 1 && playedLeadCount < 1) return alert(`必须跟出1张【${leadSuit==='trump'?'主牌':leadSuit}】！`);
-                // 只要满足了上述尽量跟花色的条件，其余牌允许随意垫！没有任何 alert！
             }
         }
     }
@@ -133,9 +141,17 @@ dom.btns.play.onclick = () => {
 
 socket.on('seatAssigned', d => {
     myIdx = d.seatIndex; myName = d.nickname; amIOwner = d.isOwner; amISpectator = false;
-    dom.ident.innerText = `你是: ${myName} (座位号: ${myIdx+1})`;
+    dom.ident.innerText = `你是: ${myName}`;
     dom.ownerPan.style.display = amIOwner ? 'block' : 'none'; dom.playerPan.style.display = (!amIOwner) ? 'block' : 'none'; dom.specPan.style.display = 'none';
 });
+
+// 新增：随时监听服务器通知改变房主身份，修复面板错位
+socket.on('ownerChanged', isOwner => {
+    amIOwner = isOwner;
+    dom.ownerPan.style.display = amIOwner ? 'block' : 'none';
+    dom.playerPan.style.display = (!amIOwner) ? 'block' : 'none';
+});
+
 socket.on('spectatorMode', name => {
     amISpectator = true; myName = name; dom.ident.innerText = `你是: ${myName} (观众)`;
     dom.ownerPan.style.display = 'none'; dom.playerPan.style.display = 'none'; dom.specPan.style.display = 'block';
@@ -162,7 +178,17 @@ socket.on('roomStateSync', d => {
         let seatUI = document.getElementById(`seat-${i}`);
         if (d.seats[i]) {
             let s = d.seats[i];
-            seatUI.innerHTML = s.isOwner ? `👑 ${s.name}` : (s.isReady ? `✅ ${s.name}` : `⏳ ${s.name}`);
+            let innerHtml = s.isOwner ? `👑 ${s.name}` : (s.isReady ? `✅ ${s.name}` : `⏳ ${s.name}`);
+            
+            // 动态注入房主管理按钮
+            if (amIOwner && s.id !== socket.id) {
+                innerHtml += `<div style="margin-top: 8px;">
+                    <button class="action-btn-small btn-kick" onclick="window.kickPlayer('${s.id}')">踢出</button>
+                    <button class="action-btn-small btn-transfer" onclick="window.transferOwner('${s.id}')">移交房主</button>
+                </div>`;
+            }
+            
+            seatUI.innerHTML = innerHtml;
             seatUI.className = 'seat' + (s.isOwner ? ' owner' : '') + (s.isReady ? ' ready' : '');
         } else { seatUI.innerHTML = '空座'; seatUI.className = 'seat'; }
     }
@@ -176,7 +202,7 @@ socket.on('roomStateSync', d => {
 });
 
 socket.on('hideLobby', () => { dom.lobby.style.display = 'none'; });
-socket.on('showLobbyFallback', () => { dom.lobby.style.display = 'flex'; });
+socket.on('showLobbyFallback', () => { dom.lobby.style.display = 'flex'; dom.readyBtn.classList.remove('active'); dom.readyBtn.innerText="点我准备"; });
 
 socket.on('gameStateSync', d => {
     gState=d.state; mainS=d.mainSuit; isFirstG=d.isFirstGame;
