@@ -76,7 +76,6 @@ function renderHand() {
 dom.hlBtn.onclick = () => { isTrumpOn = !isTrumpOn; dom.hlBtn.innerText = isTrumpOn?"取消高亮":"✨ 主牌高亮"; renderHand(); };
 dom.readyBtn.onclick = () => { socket.emit('toggleReady'); dom.readyBtn.classList.toggle('active'); dom.readyBtn.innerText = dom.readyBtn.classList.contains('active')?"已准备":"点我准备"; };
 
-// 发送带配置的 startGame 指令
 dom.startBtn.onclick = () => { 
     socket.emit('startGame', { 
         len: document.getElementById('match-length').value, 
@@ -145,7 +144,6 @@ socket.on('seatAssigned', d => {
     dom.ownerPan.style.display = amIOwner ? 'block' : 'none'; dom.playerPan.style.display = (!amIOwner) ? 'block' : 'none'; dom.specPan.style.display = 'none';
 });
 
-// 新增：随时监听服务器通知改变房主身份，修复面板错位
 socket.on('ownerChanged', isOwner => {
     amIOwner = isOwner;
     dom.ownerPan.style.display = amIOwner ? 'block' : 'none';
@@ -165,7 +163,14 @@ function updateAvatarUI() {
         if(!pUI) continue;
         
         let sInfo = roomInfo[i];
-        if(sInfo && pId !== 'player-south') pUI.querySelector('.name').innerText = sInfo.name;
+        if(sInfo) {
+            // 【修复2】如果是自己（player-south），拼接“自己 (昵称)”
+            if (pId !== 'player-south') {
+                pUI.querySelector('.name').innerText = sInfo.name;
+            } else {
+                pUI.querySelector('.name').innerText = `自己 (${sInfo.name})`;
+            }
+        }
         
         if(i === currentTurnIdx && (gState === 'PLAYING' || gState === 'DRAWING' || gState === 'BURYING_TAKE' || gState === 'BURYING_ACTION')) pUI.classList.add('active-turn');
         else { pUI.classList.remove('active-turn'); pUI.querySelector('.timer-badge').innerText = '0'; }
@@ -180,7 +185,6 @@ socket.on('roomStateSync', d => {
             let s = d.seats[i];
             let innerHtml = s.isOwner ? `👑 ${s.name}` : (s.isReady ? `✅ ${s.name}` : `⏳ ${s.name}`);
             
-            // 动态注入房主管理按钮
             if (amIOwner && s.id !== socket.id) {
                 innerHtml += `<div style="margin-top: 8px;">
                     <button class="action-btn-small btn-kick" onclick="window.kickPlayer('${s.id}')">踢出</button>
@@ -248,6 +252,13 @@ socket.on('startTimer', s => {
 
 socket.on('initHand', h => { myHand=h; trickClient=[]; renderHand(); });
 socket.on('drawResp', c => { myHand.push(c); renderHand(); });
+
+// 【修复1】监听服务器下发的底牌，追加到本地手牌中
+socket.on('recvBottom', c => {
+    myHand.push(...c);
+    renderHand();
+});
+
 socket.on('showPub', c => {
     dom.pubArea.innerHTML = '';
     c.forEach(card => {
