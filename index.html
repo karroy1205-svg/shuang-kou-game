@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>硬核山东双扣 - 商业正规桌</title>
-    <link rel="stylesheet" href="style.css?v=8.1">
+    <link rel="stylesheet" href="style.css?v=8.2">
 </head>
 <body>
     <div id="lobby-screen">
@@ -36,7 +36,7 @@
 
     <div id="settlement-screen" style="display:none; position: fixed; inset: 0; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
         <div class="lobby-box" style="background: #2c3e50; padding: 40px; border-radius: 12px; border: 2px solid #f1c40f; text-align: center; width: 450px; box-shadow: 0 0 30px rgba(0,0,0,0.9);">
-            <h2 style="color: #f1c40f; margin-top: 0; font-size: 26px;">局终结算</h2>
+            <h2 style="color: #f1c40f; margin-top: 0; font-size: 26px;">本局结算</h2>
             <div id="settlement-details" style="text-align: left; margin: 25px 0; font-size: 18px; line-height: 2;"></div>
             <button id="confirm-settlement-btn" style="background-color: #2ecc71; padding: 12px 30px; font-size: 18px; border: none; border-radius: 6px; cursor: pointer; color: white; font-weight: bold; width: 100%;">确认结算，进入下局</button>
             <div id="settlement-wait-msg" style="display:none; color: #bdc3c7; margin-top: 15px; font-size: 16px;">⏳ 等待其他玩家确认...</div>
@@ -44,7 +44,10 @@
     </div>
 
     <div id="scoreboard">
-        <div class="match-info">当前: 第 <span id="current-game">0</span> 局 | 🏆 胜场: [队1] <span id="team1-wins">0</span> - <span id="team2-wins">0</span> [队2]</div>
+        <div class="match-info" style="font-size: 14px;">
+            第 <span id="current-game">0</span> 局 | 
+            🏆 胜场: <span id="team1-name" style="color:#3498db;">[队1]</span> <b id="team1-wins" style="color:white; font-size:16px;">0</b> - <b id="team2-wins" style="color:white; font-size:16px;">0</b> <span id="team2-name" style="color:#e74c3c;">[队2]</span>
+        </div>
         <div class="main-suit-display">主花色: <span id="main-suit-icon">?</span></div>
         <div class="team-info">🛡️ 台上: <span id="on-stage-players">...</span></div>
         <div class="team-info highlight">⚔️ 台下得分: <span id="score">0</span></div>
