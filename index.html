@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>硬核山东双扣 - 商业正规桌</title>
-    <link rel="stylesheet" href="style.css?v=8.0">
+    <link rel="stylesheet" href="style.css?v=8.1">
 </head>
 <body>
     <div id="lobby-screen">
@@ -34,12 +34,12 @@
         </div>
     </div>
 
-    <div id="settlement-screen" style="display:none;">
-        <div class="lobby-box">
-            <h2 style="color: #f1c40f;">局终结算</h2>
-            <div id="settlement-details" style="text-align: left; margin: 20px 0; font-size: 16px; line-height: 1.8;"></div>
-            <button id="confirm-settlement-btn" style="background-color: #2ecc71;">确认结算</button>
-            <div id="settlement-wait-msg" style="display:none; color: #bdc3c7; margin-top: 10px;">等待其他玩家确认...</div>
+    <div id="settlement-screen" style="display:none; position: fixed; inset: 0; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
+        <div class="lobby-box" style="background: #2c3e50; padding: 40px; border-radius: 12px; border: 2px solid #f1c40f; text-align: center; width: 450px; box-shadow: 0 0 30px rgba(0,0,0,0.9);">
+            <h2 style="color: #f1c40f; margin-top: 0; font-size: 26px;">局终结算</h2>
+            <div id="settlement-details" style="text-align: left; margin: 25px 0; font-size: 18px; line-height: 2;"></div>
+            <button id="confirm-settlement-btn" style="background-color: #2ecc71; padding: 12px 30px; font-size: 18px; border: none; border-radius: 6px; cursor: pointer; color: white; font-weight: bold; width: 100%;">确认结算，进入下局</button>
+            <div id="settlement-wait-msg" style="display:none; color: #bdc3c7; margin-top: 15px; font-size: 16px;">⏳ 等待其他玩家确认...</div>
         </div>
     </div>
 
@@ -94,7 +94,6 @@
                 <button id="bury-btn" style="display:none; background-color:#c0392b;">确认扣底</button>
                 <button id="pay-tribute-btn" style="display:none; background-color:#e74c3c;">进 贡</button>
                 <button id="return-tribute-btn" style="display:none; background-color:#1abc9c;">还 供</button>
-                
                 <button id="play-btn" style="display:none; background-color:#e67e22;">出 牌</button>
             </div>
         </div>
