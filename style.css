@@ -62,3 +62,55 @@ button { padding: 8px 20px; font-size: 16px; font-weight: bold; border-radius: 5
 .action-btn-small { padding: 4px 8px; border-radius: 4px; color: white; cursor: pointer; font-size: 12px; margin: 0 2px; }
 .btn-kick { background-color: #c0392b; }
 .btn-transfer { background-color: #f39c12; }
+
+/* =========================================
+   移动端响应式适配 (Mobile Responsive)
+========================================= */
+
+/* 针对手机竖屏 (Portrait) 的极限压缩 */
+@media screen and (max-width: 768px) and (orientation: portrait) {
+    .lobby-box { width: 90%; padding: 20px; }
+    .seat-container { gap: 10px; }
+    .seat { padding: 10px; font-size: 14px; }
+    
+    #battle-area { width: 300px; height: 180px; }
+    .player-seat { transform: scale(0.8); }
+    .pos-west { left: -10px; }
+    .pos-east { right: -10px; }
+    .pos-north { top: -10px; }
+    
+    /* 竖屏下手牌极致压缩 */
+    #card-container { height: 90px; }
+    .playing-card { width: 45px; height: 65px; margin-left: -30px; border-radius: 4px; }
+    .card-corner { font-size: 12px; top: 2px; left: 2px; }
+    .playing-card.selected { transform: translateY(-15px); }
+    
+    .action-bar button { padding: 6px 12px; font-size: 14px; }
+    #chat-window { width: 100%; left: 0; border-radius: 0; }
+}
+
+/* 针对手机横屏 (Landscape) 的等比缩放 */
+@media screen and (max-height: 500px) and (orientation: landscape) {
+    .lobby-box { width: 80%; padding: 15px; margin-top: 10px; }
+    h2 { margin: 5px 0; font-size: 20px; }
+    
+    #battle-area { width: 400px; height: 180px; }
+    .player-seat { transform: scale(0.85); }
+    
+    /* 横屏手牌适配高度 */
+    #card-container { height: 100px; }
+    .playing-card { width: 60px; height: 85px; margin-left: -40px; }
+    .card-corner { font-size: 14px; }
+    .playing-card.selected { transform: translateY(-15px); }
+    
+    #chat-window { width: 250px; }
+    #chat-messages { height: 100px; }
+}
+
+/* 修复公共区域和废牌堆的层级与缩放 */
+@media screen and (max-width: 768px) {
+    #public-cards-area { grid-template-columns: repeat(4, 35px); gap: 5px; }
+    #public-cards-area .playing-card { width: 35px; height: 50px; }
+    .pile, .target-card-display { width: 40px; height: 55px; font-size: 12px; }
+    .action-bar { flex-wrap: wrap; }
+}
