@@ -50,7 +50,6 @@ function updateUI() {
         }
     }
     
-    // 【阶段权限收缩】"我要底牌" 仅供台上两名玩家操作
     if (gState === 'NEGOTIATING' && !amISpectator && onStagePlayers.includes(myIdx)) {
         dom.btns.want.style.display = 'inline-block';
     }
@@ -222,6 +221,11 @@ socket.on('gameStateSync', d => {
     document.getElementById('score').innerText=d.score;
     let stageStr = d.onStage.length > 0 ? d.onStage.map(i=>roomInfo[i]?roomInfo[i].name:"?").join(', ') : "迷雾中(等待抓天命牌)";
     document.getElementById('on-stage-players').innerText = stageStr;
+    
+    // 【终极防御补丁】只要状态不是大厅，绝对粉碎大厅遮罩层！
+    if (gState !== 'LOBBY') {
+        dom.lobby.style.display = 'none';
+    }
     
     if(d.cardCounts) {
         for(let i=0; i<4; i++) {
