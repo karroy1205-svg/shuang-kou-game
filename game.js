@@ -12,6 +12,7 @@ const dom = {
     startBtn: document.getElementById('start-btn'), readyBtn: document.getElementById('ready-btn'),
     ownerPan: document.getElementById('owner-panel'), playerPan: document.getElementById('player-panel'), specPan: document.getElementById('spectator-panel'),
     hlBtn: document.getElementById('highlight-toggle-btn'), chatList: document.getElementById('chat-messages'), chatWin: document.getElementById('chat-window'), chatHead: document.getElementById('chat-header'),
+    chatInput: document.getElementById('chat-input'), chatSendBtn: document.getElementById('chat-send-btn'), danmakuContainer: document.getElementById('danmaku-container'),
     deckArea: document.getElementById('deck-area'), pubArea: document.getElementById('public-cards-area'), targetCardUI: document.getElementById('target-card-ui'), cardsRemain: document.getElementById('cards-remain'), pileL: document.getElementById('pile-left'), pileR: document.getElementById('pile-right'),
     btns: { 
         draw: document.getElementById('draw-btn'), call: document.getElementById('call-btn'), over: document.getElementById('override-btn'), 
@@ -24,10 +25,42 @@ window.kickPlayer = (id) => { if(confirm("确定要踢出该玩家吗？")) sock
 window.transferOwner = (id) => { if(confirm("确定要移交房主吗？")) socket.emit('transferOwner', id); };
 
 dom.chatHead.onclick = () => dom.chatWin.classList.toggle('open');
+
 function addLog(msg) { 
-    let li = document.createElement('li'); li.innerText = msg; 
+    let li = document.createElement('li'); li.innerHTML = `<span style="color:#f1c40f">[系统]</span> ${msg}`; 
     dom.chatList.appendChild(li); dom.chatList.scrollTop = dom.chatList.scrollHeight; 
 }
+
+// =================== 弹幕与聊天系统防坑绑定 ===================
+function sendChat() {
+    let msg = dom.chatInput.value.trim();
+    if (msg) {
+        socket.emit('chatMessage', msg);
+        dom.chatInput.value = '';
+    }
+}
+dom.chatSendBtn.onclick = sendChat;
+dom.chatInput.onkeypress = (e) => { if (e.key === 'Enter') sendChat(); };
+
+function shootDanmaku(sender, text) {
+    let div = document.createElement('div');
+    div.className = 'danmaku-item';
+    const colors = ['#ffffff', '#f1c40f', '#2ecc71', '#e74c3c', '#9b59b6', '#3498db', '#1abc9c'];
+    let color = colors[Math.floor(Math.random() * colors.length)];
+    div.innerHTML = `<span style="font-size:16px; opacity:0.8;">${sender}:</span> <span style="color:${color};">${text}</span>`;
+    div.style.top = Math.floor(Math.random() * 70 + 15) + '%';
+    dom.danmakuContainer.appendChild(div);
+    setTimeout(() => { if(dom.danmakuContainer.contains(div)) div.remove(); }, 7500); 
+}
+
+socket.on('chatMessage', d => {
+    let li = document.createElement('li');
+    li.innerHTML = `<span style="color:#3498db">[${d.sender}]</span>: <span style="color:#ecf0f1">${d.text}</span>`;
+    dom.chatList.appendChild(li); dom.chatList.scrollTop = dom.chatList.scrollHeight;
+    shootDanmaku(d.sender, d.text);
+});
+
+// ==========================================================
 
 function getVal(c) { return c.value === '大王' ? '大' : (c.value === '小王' ? '小' : c.value); }
 function getEffSuit(c) { return (c.suit==='Joker'||['5','3','2'].includes(c.value)||c.suit===mainS)?'trump':c.suit; }
@@ -84,18 +117,17 @@ dom.hlBtn.onclick = () => { isTrumpOn = !isTrumpOn; dom.hlBtn.innerText = isTrum
 dom.readyBtn.onclick = () => { socket.emit('toggleReady'); dom.readyBtn.classList.toggle('active'); dom.readyBtn.innerText = dom.readyBtn.classList.contains('active')?"已准备":"点我准备"; };
 dom.startBtn.onclick = () => { socket.emit('startGame', { len: document.getElementById('match-length').value, reset: document.getElementById('reset-match-chk').checked }); };
 
-dom.btns.draw.onclick = () => { socket.emit('reqDraw'); };
-dom.btns.call.onclick = () => { socket.emit('callTrump', myHand.find(c=>c.value==='3').suit); };
-dom.btns.over.onclick = () => { socket.emit('overrideTrump', dom.btns.over.dataset.suit); };
-dom.btns.want.onclick = () => { socket.emit('toggleWant'); };
-dom.btns.take.onclick = () => { socket.emit('takeBottomAck'); };
-
-// 确认结算按钮
 document.getElementById('confirm-settlement-btn').onclick = () => {
     socket.emit('ackSettlement');
     document.getElementById('confirm-settlement-btn').style.display = 'none';
     document.getElementById('settlement-wait-msg').style.display = 'block';
 };
+
+dom.btns.draw.onclick = () => { socket.emit('reqDraw'); };
+dom.btns.call.onclick = () => { socket.emit('callTrump', myHand.find(c=>c.value==='3').suit); };
+dom.btns.over.onclick = () => { socket.emit('overrideTrump', dom.btns.over.dataset.suit); };
+dom.btns.want.onclick = () => { socket.emit('toggleWant'); };
+dom.btns.take.onclick = () => { socket.emit('takeBottomAck'); };
 
 dom.btns.payT.onclick = () => {
     let sels = document.querySelectorAll('.selected'); if(sels.length!==1)return alert("请选1张最大的主牌进贡");
@@ -225,7 +257,6 @@ socket.on('gameStateSync', d => {
     gState=d.state; mainS=d.mainSuit; isFirstG=d.isFirstGame; onStagePlayers=d.onStage;
     document.getElementById('current-game').innerText=d.match.currentGame;
     
-    // 【更新队友显示】直接贴上真实玩家姓名
     if(d.t1Names) document.getElementById('team1-name').innerText = d.t1Names;
     if(d.t2Names) document.getElementById('team2-name').innerText = d.t2Names;
     
@@ -252,7 +283,6 @@ socket.on('deckSync', d => {
     if (d.target) { dom.targetCardUI.style.display = 'flex'; let isRed = (d.target.suit==='♥'||d.target.suit==='♦'); dom.targetCardUI.innerHTML = `<span style="color:${isRed?'#d32f2f':'#333'}">${getVal(d.target)}<br>${d.target.suit}</span>`; } else dom.targetCardUI.style.display = 'none';
 });
 
-socket.on('systemMsg', m => addLog(m));
 socket.on('startTimer', s => { clearInterval(localTimer); let l=s; let activeBadge = document.querySelector('.active-turn .timer-badge'); if(activeBadge) activeBadge.innerText = l; localTimer=setInterval(()=>{ l--; let badge = document.querySelector('.active-turn .timer-badge'); if(l>=0 && badge) badge.innerText=l; else clearInterval(localTimer); },1000); });
 
 socket.on('initHand', h => { myHand=h; trickClient=[]; renderHand(); });
@@ -285,3 +315,4 @@ socket.on('playerPlayed', d => {
     });
 });
 socket.on('clearTable', () => { trickClient=[]; ['slot-south','slot-east','slot-north','slot-west'].forEach(id=>document.getElementById(id).innerHTML=''); });
+
