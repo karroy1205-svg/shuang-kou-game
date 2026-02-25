@@ -38,7 +38,9 @@ function broadcastRoomState() {
 }
 
 function broadcastGameState() {
-    io.emit('gameStateSync', { match: matchConfig, onStage: teamOnStage, state: gameState, mainSuit: currentMainSuit, score: offStageScore, isFirstGame: matchConfig.currentGame === 1 });
+    // 每次状态变更，下发所有人的手牌数量
+    let cardCounts = hands.map(h => h ? h.length : 0);
+    io.emit('gameStateSync', { match: matchConfig, onStage: teamOnStage, state: gameState, mainSuit: currentMainSuit, score: offStageScore, isFirstGame: matchConfig.currentGame === 1, cardCounts: cardCounts });
 }
 
 function getEffectiveSuit(card) {
@@ -46,7 +48,7 @@ function getEffectiveSuit(card) {
     return card.suit;
 }
 
-// 用于出牌比大小的权重
+// 获取战斗权重 (主对 > 同花色大副对，其余 -1)
 function getW(card, leadSuit) {
     const s = getEffectiveSuit(card);
     if (s !== leadSuit && s !== 'trump') return -1;
@@ -58,7 +60,7 @@ function getW(card, leadSuit) {
     return (s === 'trump' ? 20000 : 0) + pt;
 }
 
-// ！！新增：用于托管挑最小牌的绝对权重 ！！
+// 绝对权重 (用于 AI 托管挑最小牌)
 function getAbsW(card) {
     const sB = {'♠':40,'♥':30,'♣':20,'♦':10};
     const pt = {'4':4,'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14}[card.value]||0;
@@ -70,42 +72,51 @@ function getAbsW(card) {
     return sB[card.suit] + pt;
 }
 
-// ！！核心：超时托管代打引擎 ！！
+// ！！核心：智能 AI 超时托管代打 ！！
 function autoPlay(pIndex) {
-    emitSys(`玩家[${seats[pIndex].nickname}]超时，系统触发托管代打！`);
+    emitSys(`[${seats[pIndex].nickname}]超时，系统触发托管代打！`);
     let hand = hands[pIndex];
     if(!hand || hand.length === 0) return;
 
-    // 按绝对牌力从小到大排序
     hand.sort((a,b) => getAbsW(a) - getAbsW(b));
-    
-    let requiredCount = currentTrick.length > 0 ? currentTrick[0].cards.length : 1;
     let cardsToPlay = [];
 
-    if (currentTrick.length > 0) {
-        let leadSuit = getEffectiveSuit(currentTrick[0].cards[0]);
-        let matchingCards = hand.filter(c => getEffectiveSuit(c) === leadSuit);
-        
-        if (matchingCards.length >= requiredCount) {
-            // 有同花色，挑最小的
-            cardsToPlay = matchingCards.slice(0, requiredCount);
-        } else {
-            // 没同花色，随便挑手里最小的垫牌
-            cardsToPlay = hand.slice(0, requiredCount);
-        }
+    if (currentTrick.length === 0) {
+        cardsToPlay = [hand[0]]; // 首发挑最小单张
     } else {
-        // 首发超时，挑最小的
-        cardsToPlay = hand.slice(0, requiredCount);
+        let leadCards = currentTrick[0].cards;
+        let leadSuit = getEffectiveSuit(leadCards[0]);
+        let handLeadSuitCards = hand.filter(c => getEffectiveSuit(c) === leadSuit);
+
+        if (leadCards.length === 1) {
+            if (handLeadSuitCards.length > 0) cardsToPlay = [handLeadSuitCards[0]];
+            else cardsToPlay = [hand[0]];
+        } else if (leadCards.length === 2) {
+            // 找同花色对子
+            let pairs = [];
+            for(let i=0; i<handLeadSuitCards.length-1; i++) {
+                if(handLeadSuitCards[i].value === handLeadSuitCards[i+1].value) {
+                    pairs.push([handLeadSuitCards[i], handLeadSuitCards[i+1]]);
+                }
+            }
+            if (pairs.length > 0) {
+                cardsToPlay = pairs[0]; // 出最小同花色对子
+            } else {
+                // 没对子，尽量跟两张同花色
+                cardsToPlay = handLeadSuitCards.slice(0, 2);
+                let needed = 2 - cardsToPlay.length;
+                let otherCards = hand.filter(c => !cardsToPlay.includes(c));
+                cardsToPlay = cardsToPlay.concat(otherCards.slice(0, needed));
+            }
+        }
     }
 
-    // 从手牌剔除
     cardsToPlay.forEach(c => {
         let idx = hand.findIndex(hc => hc.suit === c.suit && hc.value === c.value);
         if(idx !== -1) hand.splice(idx, 1);
     });
 
     handlePlayCards(pIndex, cardsToPlay);
-    // 通知该玩家的手牌已被服务器强行修改
     if(seats[pIndex]) io.to(seats[pIndex].id).emit('initHand', hand);
 }
 
@@ -130,7 +141,7 @@ function startNewGame() {
         targetCard = deck.splice(revIdx, 1)[0]; currentMainSuit = targetCard.suit;
         deck.splice(Math.floor(Math.random() * 60) + 20, 0, targetCard);
         currentTurnIndex = Math.floor(Math.random() * 4); 
-        emitSys(`第一局！牌堆翻开 [${currentMainSuit}${targetCard.value}]，抓到者即为庄家！`);
+        emitSys(`第一局开始！[${currentMainSuit}${targetCard.value}]，抓到者为庄！`);
     } else {
         currentTurnIndex = teamOnStage.length > 0 ? teamOnStage[Math.floor(Math.random()*2)] : Math.floor(Math.random() * 4);
         emitSys(`第 ${matchConfig.currentGame} 局开始！`);
@@ -147,7 +158,7 @@ function triggerNextDraw() {
         if (matchConfig.currentGame === 1) {
             gameState = 'BURYING'; currentTurnIndex = teamOnStage[0]; broadcastGameState();
             io.emit('showPub', bottomCards);
-            emitSys(`底牌归属庄家。展示3秒...`);
+            emitSys(`底牌归庄。展示3秒...`);
             setTimeout(() => {
                 io.emit('clearPub'); emitSys(`请庄家扣底（限时45秒）`); 
                 io.emit('takeBottomSig', currentTurnIndex);
@@ -171,6 +182,7 @@ function triggerNextDraw() {
     io.emit('turnUpd', currentTurnIndex);
     startTimer(1.5, () => { 
         let c = deck.shift(); hands[currentTurnIndex].push(c); drawCount++;
+        broadcastGameState(); // 每次摸牌更新全场卡牌数量
         if(seats[currentTurnIndex]) io.to(seats[currentTurnIndex].id).emit('drawResp', c);
         if (matchConfig.currentGame === 1 && targetCard && c.suit === targetCard.suit && c.value === targetCard.value) {
             if (teamOnStage.length === 0) {
@@ -199,6 +211,7 @@ function startNegotiation() {
 function handlePlayCards(pIndex, cards) {
     clearTimeout(turnTimer); 
     currentTrick.push({ idx: pIndex, cards });
+    broadcastGameState(); // 更新卡牌数量
     io.emit('playerPlayed', { idx: pIndex, cards });
     
     if (currentTrick.length === 4) {
@@ -208,7 +221,12 @@ function handlePlayCards(pIndex, cards) {
         
         currentTrick.forEach(p => {
             pts += p.cards.reduce((sum, c) => sum + (c.value === '5' ? 5 : (['10','K'].includes(c.value) ? 10 : 0)), 0);
-            let w = getW(p.cards[0], leadSuit);
+            // 校验对子合法性算分
+            let isPair = p.cards.length === 2 && p.cards[0].value === p.cards[1].value;
+            let w = -1;
+            if (p.cards.length === 1) w = getW(p.cards[0], leadSuit);
+            else if (isPair) w = getW(p.cards[0], leadSuit); // 只有真对子才参与比大小
+            
             if (w > hiW) { hiW = w; winIdx = p.idx; }
         });
         
@@ -225,17 +243,17 @@ function handlePlayCards(pIndex, cards) {
             return;
         }
         
-        emitSys(`本轮结束，玩家[${seats[winIdx].nickname}] 大。`);
+        emitSys(`本轮结束，[${seats[winIdx].nickname}] 大。`);
         setTimeout(() => { 
             currentTrick = []; currentTurnIndex = winIdx; 
             io.emit('clearTable'); io.emit('turnUpd', winIdx); 
             emitSys(`请 [${seats[winIdx].nickname}] 出牌`);
-            startTimer(30, () => autoPlay(winIdx)); // 赢家首发 30 秒倒计时
+            startTimer(30, () => autoPlay(winIdx)); 
         }, 2000);
     } else {
         currentTurnIndex = (currentTurnIndex + 1) % 4; 
         io.emit('turnUpd', currentTurnIndex); 
-        startTimer(30, () => autoPlay(currentTurnIndex)); // 跟牌 30 秒倒计时
+        startTimer(30, () => autoPlay(currentTurnIndex)); 
     }
 }
 
@@ -287,19 +305,19 @@ io.on('connection', (socket) => {
     socket.on('takeBottomAck', () => { io.to(socket.id).emit('recvBottom', bottomCards); emitSys("庄家正在扣底..."); startTimer(45, ()=>{}); });
     
     socket.on('buryCards', (cards) => {
-        clearTimeout(turnTimer); bottomCards = cards;
+        clearTimeout(turnTimer); bottomCards = cards; hands[socket.seatIndex] = cards; // 同步剩余手牌
         io.emit('showPub', bottomCards); emitSys("扣底完成，展示3秒...");
         setTimeout(() => {
             io.emit('clearPub'); gameState = 'PLAYING'; broadcastGameState();
             io.emit('turnUpd', currentTurnIndex); 
             emitSys(`出牌阶段开始！请 [${seats[currentTurnIndex].nickname}] 出牌`);
-            startTimer(30, () => autoPlay(currentTurnIndex)); // 第一手出牌 30 秒倒计时
+            startTimer(30, () => autoPlay(currentTurnIndex)); 
         }, 3000);
     });
 
     socket.on('playCards', (cards) => {
-        // 客户端发来的合法出牌，直接交给 handle 处理
-        handlePlayCards(socket.seatIndex, cards);
+        hands[socket.seatIndex] = cards.leftoverHand; // 同步客户端扣除后的手牌
+        handlePlayCards(socket.seatIndex, cards.played);
     });
 });
 
