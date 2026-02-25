@@ -590,6 +590,13 @@ io.on('connection', (socket) => {
     });
 
     socket.on('playCards', (cards) => { 
+    // 【新增：聊天与弹幕广播】
+    socket.on('chatMessage', (msg) => {
+        if (typeof msg === 'string' && msg.trim().length > 0) {
+            let safeMsg = msg.substring(0, 50); // 限制50个字符防恶意刷屏
+            io.emit('chatMessage', { sender: socket.nickname, text: safeMsg });
+        }
+    });
         let sHand = hands[socket.seatIndex]; let actualPlayed = [];
         cards.played.forEach(pc => {
             let idx = sHand.findIndex(c => c.suit === pc.suit && c.value === pc.value);
