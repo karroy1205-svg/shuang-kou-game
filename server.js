@@ -25,14 +25,46 @@ let targetCard = null;
 
 let tributeConfig = { needsTribute: 0, payers: [], receivers: [], paidCards: [], returnedFrom: [] }; 
 let settlementAcks = [];
+let lobbyDisconnectTimers = {}; // 存储大厅掉线踢人计时器
 
-const baseNicknames = ["唐僧", "八戒", "沙师弟", "黛玉", "绝命毒师", "伏地魔", "张三","浦四","梅子酒", "西二旗卷王"];
+const baseNicknames = ["海淀赌神", "朝阳群众", "双扣狂魔", "摸鱼达人", "绝命毒师", "天选之子", "键盘刺客", "西二旗卷王"];
 
 function emitSys(msg) { io.emit('systemMsg', msg); }
 
 function startTimer(sec, cb) { 
     clearTimeout(turnTimer); io.emit('startTimer', sec);
     turnTimer = setTimeout(cb, sec * 1000);
+}
+
+// 【新增防占坑核心】检索大厅中的掉线者，并开启5秒踢人倒计时
+function checkLobbyDisconnects() {
+    if (gameState === 'LOBBY') {
+        seats.forEach((s, idx) => {
+            if (s && s.isOffline && !lobbyDisconnectTimers[idx]) {
+                lobbyDisconnectTimers[idx] = setTimeout(() => {
+                    if (gameState === 'LOBBY' && seats[idx] && seats[idx].isOffline) {
+                        let droppedPlayer = seats[idx];
+                        seats[idx] = null; // 强行踢出
+                        emitSys(`[${droppedPlayer.nickname}] 准备阶段离线超时，已被移出房间`);
+                        
+                        if (droppedPlayer.isOwner) {
+                            let nextPlayer = seats.find(p => p !== null && !p.isOffline);
+                            if (nextPlayer) {
+                                nextPlayer.isOwner = true;
+                                roomOwnerId = nextPlayer.id;
+                                io.to(nextPlayer.id).emit('ownerChanged', true);
+                                emitSys(`👑 房主权限自动移交给 [${nextPlayer.nickname}]`);
+                            } else {
+                                roomOwnerId = null;
+                            }
+                        }
+                        broadcastRoomState();
+                    }
+                    delete lobbyDisconnectTimers[idx];
+                }, 5000);
+            }
+        });
+    }
 }
 
 function promptPlay(pIdx) {
@@ -221,7 +253,7 @@ function triggerNextDraw() {
         return;
     }
     io.emit('turnUpd', currentTurnIndex);
-    startTimer(0.5, () => { executeDraw(currentTurnIndex); });
+    startTimer(1, () => { executeDraw(currentTurnIndex); });
 }
 
 function startNegotiation() {
@@ -331,7 +363,6 @@ function handlePlayCards(pIndex, cards) {
             let w = -1;
             if (leadCards.length === 1 && p.cards.length === 1) w = getW(p.cards[0], leadSuit);
             else if (isLeadPair && isPair) w = getW(p.cards[0], leadSuit);
-            
             if (w > hiW) { hiW = w; winIdx = p.idx; }
         });
         
@@ -340,7 +371,6 @@ function handlePlayCards(pIndex, cards) {
         emitSys(`本轮结束，[${seats[winIdx].nickname}] 大。`);
 
         let isGameOver = hands.every(h => h.length === 0);
-        
         if (isGameOver) {
             setTimeout(() => {
                 let offStageTeam = [0,1,2,3].filter(i => !teamOnStage.includes(i));
@@ -354,7 +384,6 @@ function handlePlayCards(pIndex, cards) {
                 
                 let nextOnStage = teamOnStage;
                 let willTribute = 1; 
-
                 if (offStageScore >= 120) { nextOnStage = offStageTeam; willTribute = 2; }
                 else if (offStageScore >= 80) { nextOnStage = offStageTeam; willTribute = 0; }
                 else if (offStageScore >= 20) { nextOnStage = teamOnStage; willTribute = 0; }
@@ -362,18 +391,11 @@ function handlePlayCards(pIndex, cards) {
 
                 let kouDiMsg = "";
                 if (offStageWonLast) {
-                    if (isLastPair) {
-                        kouDiMsg = "💥 最后一击【双对抠底】！台下组强制上台且吃供！";
-                        nextOnStage = offStageTeam; willTribute = 2;
-                    } else {
-                        kouDiMsg = "💥 最后一击【单张抠底】！台下组强制上台！";
-                        nextOnStage = offStageTeam; 
-                        if(willTribute === 1) willTribute = 0; 
-                    }
+                    if (isLastPair) { kouDiMsg = "💥 最后一击【双对抠底】！台下组强制上台且吃供！"; nextOnStage = offStageTeam; willTribute = 2; } 
+                    else { kouDiMsg = "💥 最后一击【单张抠底】！台下组强制上台！"; nextOnStage = offStageTeam; if(willTribute === 1) willTribute = 0; }
                 }
 
                 if (nextOnStage.includes(0)) matchConfig.team1Wins++; else matchConfig.team2Wins++;
-
                 tributeConfig.needsTribute = willTribute;
                 if (willTribute === 1) { tributeConfig.payers = offStageTeam; tributeConfig.receivers = nextOnStage; }
                 else if (willTribute === 2) { tributeConfig.payers = teamOnStage; tributeConfig.receivers = nextOnStage; }
@@ -395,27 +417,18 @@ function handlePlayCards(pIndex, cards) {
                         gameState = 'LOBBY'; clearTimeout(turnTimer);
                         seats.forEach(s => { if(s) { s.isReady = false; }});
                         io.emit('showLobbyFallback'); broadcastRoomState();
+                        checkLobbyDisconnects(); // 游戏结束后触发大厅清理检测
                     }, 8000);
                 } else {
                     gameState = 'SETTLEMENT'; clearTimeout(turnTimer);
                     settlementAcks = [];
-                    seats.forEach((s, idx) => {
-                        if (!s || s.isOffline) settlementAcks.push(idx);
-                    });
-                    
-                    if (settlementAcks.length >= 4) {
-                        startNewGame(); 
-                    } else {
-                        io.emit('showSettlement', settleHTML);
-                    }
+                    seats.forEach((s, idx) => { if (!s || s.isOffline) settlementAcks.push(idx); });
+                    if (settlementAcks.length >= 4) startNewGame(); 
+                    else io.emit('showSettlement', settleHTML);
                 }
             }, 2000);
         } else {
-            setTimeout(() => { 
-                currentTrick = [];  
-                io.emit('clearTable'); 
-                promptPlay(winIdx); 
-            }, 2000);
+            setTimeout(() => { currentTrick = []; io.emit('clearTable'); promptPlay(winIdx); }, 2000);
         }
     } else {
         promptPlay((currentTurnIndex + 1) % 4); 
@@ -426,8 +439,16 @@ io.on('connection', (socket) => {
     let clientIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
     socket.ip = clientIp;
 
+    // 【修改】允许玩家在大厅阶段也能重连抢回掉线的自己
     let existingOfflineSeatIdx = seats.findIndex(s => s !== null && s.ip === clientIp && s.isOffline);
-    if (existingOfflineSeatIdx !== -1 && gameState !== 'LOBBY') {
+    if (existingOfflineSeatIdx !== -1) {
+        
+        // 发现活人重连，立即撤销 5 秒踢人计划
+        if (lobbyDisconnectTimers[existingOfflineSeatIdx]) {
+            clearTimeout(lobbyDisconnectTimers[existingOfflineSeatIdx]);
+            delete lobbyDisconnectTimers[existingOfflineSeatIdx];
+        }
+
         socket.seatIndex = existingOfflineSeatIdx;
         socket.baseName = seats[existingOfflineSeatIdx].baseName;
         socket.nickname = seats[existingOfflineSeatIdx].nickname;
@@ -436,12 +457,18 @@ io.on('connection', (socket) => {
         seats[existingOfflineSeatIdx] = socket; 
 
         io.to(socket.id).emit('seatAssigned', { seatIndex: socket.seatIndex, nickname: socket.nickname, isOwner: socket.isOwner });
-        io.to(socket.id).emit('initHand', hands[socket.seatIndex]);
-        io.to(socket.id).emit('hideLobby'); 
-        emitSys(`🔄 [${socket.nickname}] 重新连接，恢复对局！`);
-        broadcastRoomState(); broadcastGameState();
         
-        if (gameState === 'PLAYING' && currentTurnIndex === socket.seatIndex) promptPlay(socket.seatIndex);
+        if (gameState === 'LOBBY') {
+            io.to(socket.id).emit('showLobbyFallback'); 
+            emitSys(`🔄 [${socket.nickname}] 重新连接回大厅！`);
+        } else {
+            io.to(socket.id).emit('initHand', hands[socket.seatIndex]);
+            io.to(socket.id).emit('hideLobby'); 
+            emitSys(`🔄 [${socket.nickname}] 重新连接，恢复对局！`);
+            if (gameState === 'PLAYING' && currentTurnIndex === socket.seatIndex) promptPlay(socket.seatIndex);
+        }
+        broadcastRoomState(); 
+        if (gameState !== 'LOBBY') broadcastGameState();
     } else {
         socket.baseName = baseNicknames[Math.floor(Math.random() * baseNicknames.length)];
         socket.nickname = socket.baseName; 
@@ -462,12 +489,12 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         if (socket.isSpectator) spectators = spectators.filter(s => s.id !== socket.id);
         else {
+            let seat = seats[socket.seatIndex];
+            if(seat) seat.isOffline = true; // 无差别标记离线
+
             if (gameState !== 'LOBBY') {
-                let seat = seats[socket.seatIndex];
-                if(seat) seat.isOffline = true;
                 emitSys(`⚠️ [${socket.nickname}] 掉线，已交由系统托管。等待重连...`);
                 if (gameState === 'PLAYING' && currentTurnIndex === socket.seatIndex) promptPlay(socket.seatIndex);
-                
                 if (gameState === 'SETTLEMENT') {
                     if (!settlementAcks.includes(socket.seatIndex)) {
                         settlementAcks.push(socket.seatIndex);
@@ -475,14 +502,9 @@ io.on('connection', (socket) => {
                     }
                 }
             } else {
-                seats[socket.seatIndex] = null; emitSys(`[${socket.nickname}] 退出`);
-                if (socket.isOwner) {
-                    let nextPlayer = seats.find(s => s !== null && !s.isOffline);
-                    if (nextPlayer) { 
-                        nextPlayer.isOwner = true; roomOwnerId = nextPlayer.id; 
-                        io.to(nextPlayer.id).emit('ownerChanged', true); 
-                    } else roomOwnerId = null;
-                }
+                // 【核心修复】大厅阶段掉线，启动 5 秒踢人程序
+                emitSys(`⚠️ [${socket.nickname}] 掉线，5秒后将自动移出房间...`);
+                checkLobbyDisconnects();
             }
         }
         broadcastRoomState();
@@ -601,14 +623,12 @@ io.on('connection', (socket) => {
     // ============================================
     socket.on('chatMessage', (msg) => {
         if (typeof msg === 'string' && msg.trim().length > 0) {
-            // 限制最多发送50个字符，防止恶意刷屏撑爆页面
             let safeMsg = msg.substring(0, 50); 
-            // 将包含发送者名字和文本的完整包裹发射给全房间
             io.emit('chatMessage', { sender: socket.nickname, text: safeMsg });
         }
     });
-
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => { console.log(`云端服务器已启动`); });
+
