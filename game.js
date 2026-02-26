@@ -5,6 +5,32 @@ let amISpectator = false, amIOwner = false, myName = "";
 let roomInfo = [], onStagePlayers = []; 
 let currentTurnIdx = -1;
 
+// =================== 音效物理合成引擎 (零外部文件) ===================
+const AudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+let userInteracted = false;
+document.body.addEventListener('click', () => { 
+    if(!userInteracted) { AudioCtx.resume(); userInteracted = true; } 
+});
+
+function playSynth(freq, type, duration, vol) {
+    if(AudioCtx.state === 'suspended' || !userInteracted) return;
+    let osc = AudioCtx.createOscillator();
+    let gain = AudioCtx.createGain();
+    osc.type = type; osc.frequency.setValueAtTime(freq, AudioCtx.currentTime);
+    gain.gain.setValueAtTime(vol, AudioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, AudioCtx.currentTime + duration);
+    osc.connect(gain); gain.connect(AudioCtx.destination);
+    osc.start(); osc.stop(AudioCtx.currentTime + duration);
+}
+
+const SFX = {
+    draw: () => playSynth(600, 'sine', 0.05, 0.05),     // 摸牌：轻微短促的“滴”
+    play: () => playSynth(300, 'square', 0.1, 0.15),    // 出牌：清脆有力的“啪”
+    alert: () => { playSynth(880, 'sine', 0.1, 0.1); setTimeout(()=>playSynth(880, 'sine', 0.1, 0.1), 150); }, // 轮到自己：急促滴滴
+    win: () => { playSynth(523, 'sine', 0.2, 0.2); setTimeout(()=>playSynth(659, 'sine', 0.2, 0.2), 200); setTimeout(()=>playSynth(784, 'sine', 0.4, 0.2), 400); } // 胜利：大三和弦
+};
+// =====================================================================
+
 const dom = {
     lobby: document.getElementById('lobby-screen'), 
     settlement: document.getElementById('settlement-screen'),
@@ -25,19 +51,15 @@ window.kickPlayer = (id) => { if(confirm("确定要踢出该玩家吗？")) sock
 window.transferOwner = (id) => { if(confirm("确定要移交房主吗？")) socket.emit('transferOwner', id); };
 
 dom.chatHead.onclick = () => dom.chatWin.classList.toggle('open');
-
 function addLog(msg) { 
     let li = document.createElement('li'); li.innerHTML = `<span style="color:#f1c40f">[系统]</span> ${msg}`; 
     dom.chatList.appendChild(li); dom.chatList.scrollTop = dom.chatList.scrollHeight; 
 }
 
-// =================== 弹幕与聊天系统防坑绑定 ===================
+// 弹幕与聊天
 function sendChat() {
     let msg = dom.chatInput.value.trim();
-    if (msg) {
-        socket.emit('chatMessage', msg);
-        dom.chatInput.value = '';
-    }
+    if (msg) { socket.emit('chatMessage', msg); dom.chatInput.value = ''; }
 }
 dom.chatSendBtn.onclick = sendChat;
 dom.chatInput.onkeypress = (e) => { if (e.key === 'Enter') sendChat(); };
@@ -60,7 +82,9 @@ socket.on('chatMessage', d => {
     shootDanmaku(d.sender, d.text);
 });
 
-// ==========================================================
+// 规则浮窗
+document.getElementById('show-rules-btn').onclick = () => { document.getElementById('rules-modal').style.display = 'flex'; };
+document.getElementById('close-rules-btn').onclick = () => { document.getElementById('rules-modal').style.display = 'none'; };
 
 function getVal(c) { return c.value === '大王' ? '大' : (c.value === '小王' ? '小' : c.value); }
 function getEffSuit(c) { return (c.suit==='Joker'||['5','3','2'].includes(c.value)||c.suit===mainS)?'trump':c.suit; }
@@ -123,7 +147,24 @@ document.getElementById('confirm-settlement-btn').onclick = () => {
     document.getElementById('settlement-wait-msg').style.display = 'block';
 };
 
-dom.btns.draw.onclick = () => { socket.emit('reqDraw'); };
+// =================== 战绩海报生成器 ===================
+document.getElementById('export-poster-btn').onclick = () => {
+    let captureNode = document.getElementById('poster-capture-area');
+    let exportBtn = document.getElementById('export-poster-btn');
+    exportBtn.innerText = "正在生成...";
+    
+    html2canvas(captureNode, { backgroundColor: '#2c3e50', scale: 2 }).then(canvas => {
+        let link = document.createElement('a');
+        link.download = `硬核双扣战绩_${new Date().getHours()}${new Date().getMinutes()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        exportBtn.innerText = "✅ 保存成功";
+        setTimeout(() => { exportBtn.innerText = "📷 战绩截图"; }, 2000);
+    });
+};
+// ======================================================
+
+dom.btns.draw.onclick = () => { socket.emit('reqDraw'); SFX.draw(); };
 dom.btns.call.onclick = () => { socket.emit('callTrump', myHand.find(c=>c.value==='3').suit); };
 dom.btns.over.onclick = () => { socket.emit('overrideTrump', dom.btns.over.dataset.suit); };
 dom.btns.want.onclick = () => { socket.emit('toggleWant'); };
@@ -132,12 +173,12 @@ dom.btns.take.onclick = () => { socket.emit('takeBottomAck'); };
 dom.btns.payT.onclick = () => {
     let sels = document.querySelectorAll('.selected'); if(sels.length!==1)return alert("请选1张最大的主牌进贡");
     let card = myHand[parseInt(sels[0].dataset.index)];
-    socket.emit('payTribute', card); dom.btns.payT.style.display='none';
+    socket.emit('payTribute', card); dom.btns.payT.style.display='none'; SFX.play();
 };
 dom.btns.retT.onclick = () => {
     let sels = document.querySelectorAll('.selected'); if(sels.length!==1)return alert("请选1张最小的牌还供");
     let card = myHand[parseInt(sels[0].dataset.index)];
-    socket.emit('returnTribute', card); dom.btns.retT.style.display='none';
+    socket.emit('returnTribute', card); dom.btns.retT.style.display='none'; SFX.play();
 };
 
 dom.btns.bury.onclick = () => {
@@ -146,7 +187,7 @@ dom.btns.bury.onclick = () => {
     let buriedCards = ids.map(idx => myHand[idx]); 
     ids.forEach(idx => myHand.splice(idx,1));
     socket.emit('buryCards', { buried: buriedCards, leftoverHand: myHand }); 
-    dom.btns.bury.style.display='none'; renderHand();
+    dom.btns.bury.style.display='none'; renderHand(); SFX.play();
 };
 
 dom.btns.play.onclick = () => {
@@ -185,6 +226,7 @@ dom.btns.play.onclick = () => {
     ids.forEach(idx => myHand.splice(idx,1));
     socket.emit('playCards', { played: cards, leftoverHand: myHand });
     dom.btns.play.style.display='none'; renderHand();
+    SFX.play(); // 触发打击音效
 };
 
 socket.on('wantStatusSync', isWanting => { dom.btns.want.innerText = isWanting ? "取消要牌" : "我要底牌"; dom.btns.want.style.backgroundColor = isWanting ? "#e74c3c" : "#2ecc71"; });
@@ -245,6 +287,7 @@ socket.on('showSettlement', html => {
     document.getElementById('settlement-details').innerHTML = html;
     document.getElementById('confirm-settlement-btn').style.display = 'inline-block';
     document.getElementById('settlement-wait-msg').style.display = 'none';
+    SFX.win(); // 播放胜利结算音乐
 });
 socket.on('hideSettlement', () => { dom.settlement.style.display = 'none'; });
 
@@ -256,10 +299,8 @@ socket.on('startTributePhase', d => {
 socket.on('gameStateSync', d => {
     gState=d.state; mainS=d.mainSuit; isFirstG=d.isFirstGame; onStagePlayers=d.onStage;
     document.getElementById('current-game').innerText=d.match.currentGame;
-    
     if(d.t1Names) document.getElementById('team1-name').innerText = d.t1Names;
     if(d.t2Names) document.getElementById('team2-name').innerText = d.t2Names;
-    
     document.getElementById('team1-wins').innerText=d.match.team1Wins;
     document.getElementById('team2-wins').innerText=d.match.team2Wins;
     document.getElementById('main-suit-icon').innerText=mainS; document.getElementById('score').innerText=d.score;
@@ -286,7 +327,7 @@ socket.on('deckSync', d => {
 socket.on('startTimer', s => { clearInterval(localTimer); let l=s; let activeBadge = document.querySelector('.active-turn .timer-badge'); if(activeBadge) activeBadge.innerText = l; localTimer=setInterval(()=>{ l--; let badge = document.querySelector('.active-turn .timer-badge'); if(l>=0 && badge) badge.innerText=l; else clearInterval(localTimer); },1000); });
 
 socket.on('initHand', h => { myHand=h; trickClient=[]; renderHand(); });
-socket.on('drawResp', c => { myHand.push(c); renderHand(); });
+socket.on('drawResp', c => { myHand.push(c); renderHand(); SFX.draw(); }); // 触发摸牌音效
 socket.on('recvBottom', c => { myHand.push(...c); renderHand(); });
 
 socket.on('showPub', c => {
@@ -300,10 +341,17 @@ socket.on('showPub', c => {
 });
 socket.on('clearPub', () => dom.pubArea.innerHTML='');
 
-socket.on('turnUpd', t => { currentTurnIdx = t; updateAvatarUI(); updateUI(); });
-socket.on('takeBottomSig', t => { currentTurnIdx = t; updateAvatarUI(); updateUI(); });
+socket.on('turnUpd', t => { 
+    currentTurnIdx = t; updateAvatarUI(); updateUI(); 
+    if (t === myIdx && !amISpectator) SFX.alert(); // 轮到自己时触发滴滴音效
+});
+socket.on('takeBottomSig', t => { 
+    currentTurnIdx = t; updateAvatarUI(); updateUI(); 
+    if (t === myIdx && !amISpectator) SFX.alert(); 
+});
 
 socket.on('playerPlayed', d => {
+    if(d.idx !== myIdx) SFX.play(); // 别人出牌也响一声
     if(trickClient.length===4) trickClient=[]; trickClient.push(d);
     let diff = amISpectator ? d.idx : (d.idx - myIdx + 4)%4; 
     let slot = document.getElementById(['slot-south','slot-east','slot-north','slot-west'][diff]);
@@ -315,10 +363,3 @@ socket.on('playerPlayed', d => {
     });
 });
 socket.on('clearTable', () => { trickClient=[]; ['slot-south','slot-east','slot-north','slot-west'].forEach(id=>document.getElementById(id).innerHTML=''); });
-// =================== 规则浮窗逻辑 ===================
-document.getElementById('show-rules-btn').onclick = () => {
-    document.getElementById('rules-modal').style.display = 'flex';
-};
-document.getElementById('close-rules-btn').onclick = () => {
-    document.getElementById('rules-modal').style.display = 'none';
-};
