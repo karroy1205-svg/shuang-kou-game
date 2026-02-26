@@ -4,28 +4,57 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>硬核山东双扣 - 商业正规桌</title>
-    <link rel="stylesheet" href="style.css?v=9.1">
+    <link rel="stylesheet" href="style.css?v=9.2">
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 <body>
+    <button id="show-rules-btn" style="position: fixed; top: 10px; left: 10px; z-index: 9000; background: #8e44ad; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; box-shadow: 0 2px 5px rgba(0,0,0,0.5);">📜 玩法规则</button>
+
+    <div id="rules-modal" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center;">
+        <div style="background: #2c3e50; padding: 20px; border-radius: 8px; border: 2px solid #3498db; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; color: #ecf0f1; position: relative; box-shadow: 0 0 20px #000;">
+            <button id="close-rules-btn" style="position: absolute; top: 10px; right: 10px; background: #e74c3c; border: none; color: white; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-weight: bold; font-size: 16px;">X</button>
+            <h2 style="text-align: center; color: #f1c40f; margin-top: 0; font-size: 22px;">《山东双扣》规则</h2>
+            <div style="font-size: 14px; line-height: 1.6;">
+                <h4 style="color:#3498db; margin-bottom: 5px; margin-top: 15px;">🎯 阵营与目标</h4>
+                <p style="margin-top: 0; color:#bdc3c7;">对家为队友。分为“台上(庄)”和“台下(闲)”。台下需打出 5(5分)、10(10分)、K(10分) 抓分抢庄；台上需尽量逃分。</p>
+                <h4 style="color:#3498db; margin-bottom: 5px;">⚔️ 出牌规则</h4>
+                <p style="margin-top: 0; color:#bdc3c7;">
+                    <b>必须跟花色：</b>别人出副牌，你有该花色必须出；无该花色可垫牌，或用“主牌”击杀。<br>
+                    <b>绝对对子：</b>两张牌必须<b>花色和点数完全一模一样</b>才算对子。<br>
+                    <b>拆牌强跟：</b>若无同花色对子，但有该花色单牌，必须凑足数量强制跟出。<br>
+                    <b>先出者大：</b>若两人打出完全一样的牌，先出牌的人大！
+                </p>
+                <h4 style="color:#3498db; margin-bottom: 5px;">🏆 计分与升降级</h4>
+                <p style="margin-top: 0; color:#bdc3c7;">
+                    <b>台下 < 20分：</b>台上连庄，台下进贡。<br>
+                    <b>20分 ≤ 台下 < 80分：</b>台上连庄，双方免供。<br>
+                    <b>台下 ≥ 80分：</b>台下“上台”当庄，免供。<br>
+                    <b>台下 ≥ 120分：</b>台下上台当庄，且台上进贡（吃供）。
+                </p>
+                <h4 style="color:#e74c3c; margin-bottom: 5px;">💥 终极绝杀（抠底）</h4>
+                <p style="margin-top: 0; color:#bdc3c7;">最后一回合若由台下获胜，触发绝杀：<br>
+                    <b>单张抠底：</b>无视分数，台下强制上台（免供）。<br>
+                    <b>双对抠底：</b>无视分数，台下强制上台，且台上必须进贡！
+                </p>
+            </div>
+        </div>
+    </div>
+
     <div id="lobby-screen">
         <div class="lobby-box">
             <h2>双扣在线大厅</h2>
             <div id="my-identity" style="color:#f1c40f; font-weight:bold; margin-bottom:15px;">连接中...</div>
             <div class="seat-container">
-                <div class="seat" id="seat-0">空座</div>
-                <div class="seat" id="seat-1">空座</div>
-                <div class="seat" id="seat-2">空座</div>
-                <div class="seat" id="seat-3">空座</div>
+                <div class="seat" id="seat-0">空座</div><div class="seat" id="seat-1">空座</div>
+                <div class="seat" id="seat-2">空座</div><div class="seat" id="seat-3">空座</div>
             </div>
             <div id="owner-panel" style="display:none; margin-top: 20px;">
                 <select id="match-length">
-                    <option value="5">5 局制</option>
-                    <option value="10">10 局制</option>
-                    <option value="15">15 局制</option>
-                    <option value="20">20 局制</option>
+                    <option value="5">5 局制</option><option value="10">10 局制</option>
+                    <option value="15">15 局制</option><option value="20">20 局制</option>
                 </select>
                 <label style="color:#2ecc71; margin-right:15px; font-weight:bold; cursor:pointer;">
-                    <input type="checkbox" id="reset-match-chk" checked> 重新计算比分
+                    <input type="checkbox" id="reset-match-chk" checked> 重置比分
                 </label>
                 <button id="start-btn" disabled>等待全员准备</button>
             </div>
@@ -35,10 +64,14 @@
     </div>
 
     <div id="settlement-screen" style="display:none; position: fixed; inset: 0; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
-        <div class="lobby-box" style="background: #2c3e50; padding: 40px; border-radius: 12px; border: 2px solid #f1c40f; text-align: center; width: 450px; box-shadow: 0 0 30px rgba(0,0,0,0.9);">
+        <div id="poster-capture-area" class="lobby-box" style="background: #2c3e50; padding: 40px; border-radius: 12px; border: 2px solid #f1c40f; text-align: center; width: 450px; box-shadow: 0 0 30px rgba(0,0,0,0.9); position: relative;">
             <h2 style="color: #f1c40f; margin-top: 0; font-size: 26px;">本局结算</h2>
             <div id="settlement-details" style="text-align: left; margin: 25px 0; font-size: 18px; line-height: 2;"></div>
-            <button id="confirm-settlement-btn" style="background-color: #2ecc71; padding: 12px 30px; font-size: 18px; border: none; border-radius: 6px; cursor: pointer; color: white; font-weight: bold; width: 100%;">确认结算，进入下局</button>
+            
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button id="export-poster-btn" style="background-color: #3498db; padding: 12px 20px; font-size: 16px; border: none; border-radius: 6px; cursor: pointer; color: white; font-weight: bold; flex: 1;">📷 战绩截图</button>
+                <button id="confirm-settlement-btn" style="background-color: #2ecc71; padding: 12px 20px; font-size: 16px; border: none; border-radius: 6px; cursor: pointer; color: white; font-weight: bold; flex: 2;">确认结算</button>
+            </div>
             <div id="settlement-wait-msg" style="display:none; color: #bdc3c7; margin-top: 15px; font-size: 16px;">⏳ 等待其他玩家确认...</div>
         </div>
     </div>
@@ -55,50 +88,23 @@
 
     <div id="game-table">
         <div id="danmaku-container"></div>
-
-        <div class="player-seat pos-north" id="player-north">
-            <div class="avatar">👤<div class="timer-badge">0</div></div>
-            <div class="info"><span class="name">待定</span><br>🎴 <span class="card-count">0</span></div>
-            <div class="battle-slot" id="slot-north"></div>
-        </div>
-        <div class="player-seat pos-west" id="player-west">
-            <div class="avatar">👤<div class="timer-badge">0</div></div>
-            <div class="info"><span class="name">待定</span><br>🎴 <span class="card-count">0</span></div>
-            <div class="battle-slot" id="slot-west"></div>
-        </div>
+        <div class="player-seat pos-north" id="player-north"><div class="avatar">👤<div class="timer-badge">0</div></div><div class="info"><span class="name">待定</span><br>🎴 <span class="card-count">0</span></div><div class="battle-slot" id="slot-north"></div></div>
+        <div class="player-seat pos-west" id="player-west"><div class="avatar">👤<div class="timer-badge">0</div></div><div class="info"><span class="name">待定</span><br>🎴 <span class="card-count">0</span></div><div class="battle-slot" id="slot-west"></div></div>
         <div id="battle-area">
-            <div id="deck-area" style="display:none;">
-                <div class="pile" id="pile-left"></div>
-                <div id="target-card-ui" class="target-card-display">?</div>
-                <div class="pile" id="pile-right"></div>
-                <div class="deck-count">剩余: <span id="cards-remain">108</span> 张</div>
-            </div>
+            <div id="deck-area" style="display:none;"><div class="pile" id="pile-left"></div><div id="target-card-ui" class="target-card-display">?</div><div class="pile" id="pile-right"></div><div class="deck-count">剩余: <span id="cards-remain">108</span> 张</div></div>
             <div id="public-cards-area"></div>
         </div>
-        <div class="player-seat pos-east" id="player-east">
-            <div class="avatar">👤<div class="timer-badge">0</div></div>
-            <div class="info"><span class="name">待定</span><br>🎴 <span class="card-count">0</span></div>
-            <div class="battle-slot" id="slot-east"></div>
-        </div>
-        <div class="player-seat pos-south" id="player-south">
-            <div class="battle-slot" id="slot-south" style="top: -100px;"></div>
-            <div class="avatar">👤<div class="timer-badge">0</div></div>
-            <div class="info"><span class="name">自己</span></div>
-        </div>
+        <div class="player-seat pos-east" id="player-east"><div class="avatar">👤<div class="timer-badge">0</div></div><div class="info"><span class="name">待定</span><br>🎴 <span class="card-count">0</span></div><div class="battle-slot" id="slot-east"></div></div>
+        <div class="player-seat pos-south" id="player-south"><div class="battle-slot" id="slot-south" style="top: -100px;"></div><div class="avatar">👤<div class="timer-badge">0</div></div><div class="info"><span class="name">自己</span></div></div>
     </div>
 
     <div id="my-area">
         <div class="action-bar">
             <button id="highlight-toggle-btn" style="background-color: #f1c40f; color: #333;">✨ 主牌高亮</button>
             <div class="buttons">
-                <button id="draw-btn" style="display:none; background-color:#3498db;">摸牌</button>
-                <button id="call-btn" style="display:none; background-color:#9b59b6;">亮3定主</button>
-                <button id="override-btn" style="display:none; background-color:#8e44ad;">双3反主</button>
-                <button id="want-btn" style="display:none; background-color:#2ecc71;">我要底牌</button>
-                <button id="take-bottom-btn" style="display:none; background-color:#27ae60;">拿走底牌</button>
-                <button id="bury-btn" style="display:none; background-color:#c0392b;">确认扣底</button>
-                <button id="pay-tribute-btn" style="display:none; background-color:#e74c3c;">进 贡</button>
-                <button id="return-tribute-btn" style="display:none; background-color:#1abc9c;">还 供</button>
+                <button id="draw-btn" style="display:none; background-color:#3498db;">摸牌</button><button id="call-btn" style="display:none; background-color:#9b59b6;">亮3定主</button><button id="override-btn" style="display:none; background-color:#8e44ad;">双3反主</button>
+                <button id="want-btn" style="display:none; background-color:#2ecc71;">我要底牌</button><button id="take-bottom-btn" style="display:none; background-color:#27ae60;">拿走底牌</button><button id="bury-btn" style="display:none; background-color:#c0392b;">确认扣底</button>
+                <button id="pay-tribute-btn" style="display:none; background-color:#e74c3c;">进 贡</button><button id="return-tribute-btn" style="display:none; background-color:#1abc9c;">还 供</button>
                 <button id="play-btn" style="display:none; background-color:#e67e22;">出 牌</button>
             </div>
         </div>
