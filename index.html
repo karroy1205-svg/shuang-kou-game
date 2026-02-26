@@ -7,48 +7,6 @@
     <link rel="stylesheet" href="style.css?v=9.1">
 </head>
 <body>
-<button id="show-rules-btn" style="position: fixed; top: 10px; left: 10px; z-index: 9000; background: #8e44ad; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; box-shadow: 0 2px 5px rgba(0,0,0,0.5);">📜 玩法规则</button>
-
-    <div id="rules-modal" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center;">
-        <div style="background: #2c3e50; padding: 20px; border-radius: 8px; border: 2px solid #3498db; width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto; color: #ecf0f1; position: relative; box-shadow: 0 0 20px #000;">
-            <button id="close-rules-btn" style="position: absolute; top: 10px; right: 10px; background: #e74c3c; border: none; color: white; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-weight: bold; font-size: 16px;">X</button>
-            <h2 style="text-align: center; color: #f1c40f; margin-top: 0; font-size: 22px;">《山东双扣》游戏规则</h2>
-            
-            <div style="font-size: 14px; line-height: 1.6;">
-                <h4 style="color:#3498db; margin-bottom: 5px; margin-top: 15px;">🎯 阵营与目标</h4>
-                <p style="margin-top: 0; color:#bdc3c7;">分为“台上(庄家)”和“台下(闲家)”。台下队伍需打出 5(5分)、10(10分)、K(10分) 抓分抢庄；台上队伍需尽量逃分。</p>
-                
-                <h4 style="color:#3498db; margin-bottom: 5px;">🃏 牌型与定主</h4>
-                <p style="margin-top: 0; color:#bdc3c7;">
-                    <b>常驻主牌：</b>大小王、2、3、5以及打出的主花色。<br>
-                    <b>首局天命：</b>第一局抓到“天命牌”的队伍自动当庄。<br>
-                    <b>后续定主：</b>第二局起，发牌期谁先打出单张3即“亮3定主”，两张同花色3可“双3反主”。
-                </p>
-
-                <h4 style="color:#3498db; margin-bottom: 5px;">⚔️ 出牌规则 (极度硬核)</h4>
-                <p style="margin-top: 0; color:#bdc3c7;">
-                    <b>1. 必须跟花色：</b>别人出副牌，你有该花色必须出；无该花色可垫牌，或用“主牌”击杀。<br>
-                    <b>2. 绝对对子：</b>两张牌必须<b>花色和点数完全一模一样</b>才算对子。<br>
-                    <b>3. 拆牌强跟：</b>若无同花色对子，但有该花色单牌，必须凑足数量强制跟出。<br>
-                    <b>4. 先出者大：</b>若两人打出完全一样的牌，先出牌的人大！
-                </p>
-
-                <h4 style="color:#3498db; margin-bottom: 5px;">🏆 计分与升降级</h4>
-                <p style="margin-top: 0; color:#bdc3c7;">
-                    <b>台下 < 20分：</b>台上连庄，台下进贡。<br>
-                    <b>20分 ≤ 台下 < 80分：</b>台上连庄，双方免供。<br>
-                    <b>台下 ≥ 80分：</b>台下“上台”当庄，免供。<br>
-                    <b>台下 ≥ 120分：</b>台下上台当庄，且台上进贡（吃供）。
-                </p>
-
-                <h4 style="color:#e74c3c; margin-bottom: 5px;">💥 终极绝杀（抠底）</h4>
-                <p style="margin-top: 0; color:#bdc3c7;">最后一回合若由台下获胜，底牌分数归台下，且触发绝杀：<br>
-                    <b>单张抠底：</b>无视当前分数，台下直接强制上台（免供）。<br>
-                    <b>双对抠底：</b>无视当前分数，台下直接强制上台，且台上必须进贡！
-                </p>
-            </div>
-        </div>
-    </div>
     <div id="lobby-screen">
         <div class="lobby-box">
             <h2>双扣在线大厅</h2>
