@@ -315,4 +315,10 @@ socket.on('playerPlayed', d => {
     });
 });
 socket.on('clearTable', () => { trickClient=[]; ['slot-south','slot-east','slot-north','slot-west'].forEach(id=>document.getElementById(id).innerHTML=''); });
-
+// =================== 规则浮窗逻辑 ===================
+document.getElementById('show-rules-btn').onclick = () => {
+    document.getElementById('rules-modal').style.display = 'flex';
+};
+document.getElementById('close-rules-btn').onclick = () => {
+    document.getElementById('rules-modal').style.display = 'none';
+};
