@@ -25,7 +25,9 @@ let targetCard = null;
 
 let tributeConfig = { needsTribute: 0, payers: [], receivers: [], paidCards: [], returnedFrom: [] }; 
 let settlementAcks = [];
-let lobbyDisconnectTimers = {}; // 存储大厅掉线踢人计时器
+
+// 【完美回归：大厅掉线计时器】
+let lobbyDisconnectTimers = {}; 
 
 const baseNicknames = ["海淀赌神","张三","浦四","梅子酒","大铁锅", "林黛玉",  "鲁智深", "唐僧", "八戒", "悟空", "沙师弟", "伏地魔"];
 
@@ -36,15 +38,16 @@ function startTimer(sec, cb) {
     turnTimer = setTimeout(cb, sec * 1000);
 }
 
-// 【新增防占坑核心】检索大厅中的掉线者，并开启5秒踢人倒计时
+// 【完美回归：大厅5秒防占座引擎】
 function checkLobbyDisconnects() {
     if (gameState === 'LOBBY') {
         seats.forEach((s, idx) => {
             if (s && s.isOffline && !lobbyDisconnectTimers[idx]) {
                 lobbyDisconnectTimers[idx] = setTimeout(() => {
+                    // 5秒后如果还在大厅且依然离线，执行雷霆清座
                     if (gameState === 'LOBBY' && seats[idx] && seats[idx].isOffline) {
                         let droppedPlayer = seats[idx];
-                        seats[idx] = null; // 强行踢出
+                        seats[idx] = null; 
                         emitSys(`[${droppedPlayer.nickname}] 准备阶段离线超时，已被移出房间`);
                         
                         if (droppedPlayer.isOwner) {
@@ -253,7 +256,7 @@ function triggerNextDraw() {
         return;
     }
     io.emit('turnUpd', currentTurnIndex);
-    startTimer(1, () => { executeDraw(currentTurnIndex); });
+    startTimer(0.3, () => { executeDraw(currentTurnIndex); });
 }
 
 function startNegotiation() {
@@ -363,6 +366,8 @@ function handlePlayCards(pIndex, cards) {
             let w = -1;
             if (leadCards.length === 1 && p.cards.length === 1) w = getW(p.cards[0], leadSuit);
             else if (isLeadPair && isPair) w = getW(p.cards[0], leadSuit);
+            
+            // 【核心防抖：先出者大】
             if (w > hiW) { hiW = w; winIdx = p.idx; }
         });
         
@@ -371,6 +376,7 @@ function handlePlayCards(pIndex, cards) {
         emitSys(`本轮结束，[${seats[winIdx].nickname}] 大。`);
 
         let isGameOver = hands.every(h => h.length === 0);
+        
         if (isGameOver) {
             setTimeout(() => {
                 let offStageTeam = [0,1,2,3].filter(i => !teamOnStage.includes(i));
@@ -384,6 +390,7 @@ function handlePlayCards(pIndex, cards) {
                 
                 let nextOnStage = teamOnStage;
                 let willTribute = 1; 
+
                 if (offStageScore >= 120) { nextOnStage = offStageTeam; willTribute = 2; }
                 else if (offStageScore >= 80) { nextOnStage = offStageTeam; willTribute = 0; }
                 else if (offStageScore >= 20) { nextOnStage = teamOnStage; willTribute = 0; }
@@ -391,11 +398,18 @@ function handlePlayCards(pIndex, cards) {
 
                 let kouDiMsg = "";
                 if (offStageWonLast) {
-                    if (isLastPair) { kouDiMsg = "💥 最后一击【双对抠底】！台下组强制上台且吃供！"; nextOnStage = offStageTeam; willTribute = 2; } 
-                    else { kouDiMsg = "💥 最后一击【单张抠底】！台下组强制上台！"; nextOnStage = offStageTeam; if(willTribute === 1) willTribute = 0; }
+                    if (isLastPair) {
+                        kouDiMsg = "💥 最后一击【双对抠底】！台下组强制上台且吃供！";
+                        nextOnStage = offStageTeam; willTribute = 2;
+                    } else {
+                        kouDiMsg = "💥 最后一击【单张抠底】！台下组强制上台！";
+                        nextOnStage = offStageTeam; 
+                        if(willTribute === 1) willTribute = 0; 
+                    }
                 }
 
                 if (nextOnStage.includes(0)) matchConfig.team1Wins++; else matchConfig.team2Wins++;
+
                 tributeConfig.needsTribute = willTribute;
                 if (willTribute === 1) { tributeConfig.payers = offStageTeam; tributeConfig.receivers = nextOnStage; }
                 else if (willTribute === 2) { tributeConfig.payers = teamOnStage; tributeConfig.receivers = nextOnStage; }
@@ -422,13 +436,23 @@ function handlePlayCards(pIndex, cards) {
                 } else {
                     gameState = 'SETTLEMENT'; clearTimeout(turnTimer);
                     settlementAcks = [];
-                    seats.forEach((s, idx) => { if (!s || s.isOffline) settlementAcks.push(idx); });
-                    if (settlementAcks.length >= 4) startNewGame(); 
-                    else io.emit('showSettlement', settleHTML);
+                    seats.forEach((s, idx) => {
+                        if (!s || s.isOffline) settlementAcks.push(idx);
+                    });
+                    
+                    if (settlementAcks.length >= 4) {
+                        startNewGame(); 
+                    } else {
+                        io.emit('showSettlement', settleHTML);
+                    }
                 }
             }, 2000);
         } else {
-            setTimeout(() => { currentTrick = []; io.emit('clearTable'); promptPlay(winIdx); }, 2000);
+            setTimeout(() => { 
+                currentTrick = [];  
+                io.emit('clearTable'); 
+                promptPlay(winIdx); 
+            }, 2000);
         }
     } else {
         promptPlay((currentTurnIndex + 1) % 4); 
@@ -439,11 +463,10 @@ io.on('connection', (socket) => {
     let clientIp = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
     socket.ip = clientIp;
 
-    // 【修改】允许玩家在大厅阶段也能重连抢回掉线的自己
+    // 【完美回归：断线重连抢回IP】
     let existingOfflineSeatIdx = seats.findIndex(s => s !== null && s.ip === clientIp && s.isOffline);
     if (existingOfflineSeatIdx !== -1) {
-        
-        // 发现活人重连，立即撤销 5 秒踢人计划
+        // 如果在大厅被找到了，立刻拔除他头上的“5秒死亡倒计时”
         if (lobbyDisconnectTimers[existingOfflineSeatIdx]) {
             clearTimeout(lobbyDisconnectTimers[existingOfflineSeatIdx]);
             delete lobbyDisconnectTimers[existingOfflineSeatIdx];
@@ -502,7 +525,7 @@ io.on('connection', (socket) => {
                     }
                 }
             } else {
-                // 【核心修复】大厅阶段掉线，启动 5 秒踢人程序
+                // 【完美回归：触发5秒防占座踢人程序】
                 emitSys(`⚠️ [${socket.nickname}] 掉线，5秒后将自动移出房间...`);
                 checkLobbyDisconnects();
             }
@@ -619,7 +642,7 @@ io.on('connection', (socket) => {
     });
 
     // ============================================
-    // 【核心修复】：在这里挂载聊天室与弹幕广播通道！
+    // 【聊天弹幕通信管道】
     // ============================================
     socket.on('chatMessage', (msg) => {
         if (typeof msg === 'string' && msg.trim().length > 0) {
@@ -631,4 +654,3 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => { console.log(`云端服务器已启动`); });
-
